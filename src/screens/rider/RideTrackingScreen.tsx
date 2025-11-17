@@ -45,12 +45,23 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
       setLoading(false);
     }
     
-    // Poll for ride status updates every 3 seconds
+    // Poll for ride status updates every 2 seconds (faster polling)
     const fetchRideStatus = async () => {
       try {
         const { data, error } = await riderService.getRideStatus(rideId);
         if (!error && data) {
+          const previousStatus = ride?.status;
           console.log('🔄 Ride status:', data.status);
+          
+          // Show alert when driver accepts
+          if (previousStatus === 'pending' && data.status === 'accepted') {
+            Alert.alert(
+              '🎉 Driver Found!',
+              `${data.driver?.first_name || 'A driver'} has accepted your ride and will arrive soon!`,
+              [{ text: 'OK' }]
+            );
+          }
+          
           setRide(data);
           setCurrentRideStore(data);
           
@@ -67,11 +78,11 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
     // Initial fetch
     fetchRideStatus();
 
-    // Set up polling interval
-    const interval = setInterval(fetchRideStatus, 3000);
+    // Set up polling interval (every 2 seconds for faster updates)
+    const interval = setInterval(fetchRideStatus, 2000);
 
     return () => clearInterval(interval);
-  }, [rideId]);
+  }, [rideId, ride?.status]);
 
   const handleCancelRide = async () => {
     Alert.alert('Cancel Ride', 'Are you sure you want to cancel this ride?', [

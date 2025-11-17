@@ -42,13 +42,20 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
   useEffect(() => {
     loadMessages();
     
-    // Poll for new messages every 2 seconds for real-time updates
-    const pollInterval = setInterval(() => {
-      loadMessages();
-    }, 2000);
+    // Subscribe to real-time messages
+    const subscription = messageService.subscribeToMessages(rideId, (message) => {
+      console.log('📨 New message received:', message);
+      setMessages(prev => {
+        // Check if message already exists
+        const exists = prev.some(m => m.id === message.id);
+        if (exists) return prev;
+        return [...prev, message];
+      });
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    });
 
     return () => {
-      clearInterval(pollInterval);
+      subscription.unsubscribe();
     };
   }, [rideId]);
 
