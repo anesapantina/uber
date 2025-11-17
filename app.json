@@ -4,7 +4,7 @@
     "slug": "uber",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/uber.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#ffb6c1"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
