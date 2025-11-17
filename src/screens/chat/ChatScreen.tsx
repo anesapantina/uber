@@ -8,19 +8,27 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { messageService } from '../../services/supabase';
 import { useAuthStore } from '../../store/store';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface ChatScreenProps {
   route: any;
   navigation: any;
 }
 
-const PRIMARY_PINK = '#e8ccd7';
-const DARK_ACCENT = '#b8869e';
-const LIGHT_BACKGROUND = '#fcfcfc';
+// Black theme colors
+const BLACK = '#000000';
+const DARK_GRAY = '#1a1a1a';
+const MEDIUM_GRAY = '#2a2a2a';
+const LIGHT_GRAY = '#3a3a3a';
+const WHITE = '#FFFFFF';
+const TEXT_GRAY = '#b0b0b0';
+const MY_MESSAGE_BG = '#0084ff';
+const THEIR_MESSAGE_BG = '#2a2a2a';
 
 export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => {
   const { rideId } = route.params;
@@ -34,23 +42,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
   useEffect(() => {
     loadMessages();
     
-    // Subscribe to new messages
-    const subscription = messageService.subscribeToMessages(rideId, (message) => {
-      setMessages(prev => [...prev, message]);
-      setTimeout(() => flatListRef.current?.scrollToEnd(), 100);
-    });
+    // Poll for new messages every 2 seconds for real-time updates
+    const pollInterval = setInterval(() => {
+      loadMessages();
+    }, 2000);
 
     return () => {
-      subscription.unsubscribe();
+      clearInterval(pollInterval);
     };
   }, [rideId]);
 
   const loadMessages = async () => {
-    setLoading(true);
     const { data, error } = await messageService.getMessages(rideId);
     if (!error && data) {
-      setMessages(data);
-      setTimeout(() => flatListRef.current?.scrollToEnd(), 100);
+      // Only update if there are new messages
+      if (JSON.stringify(data) !== JSON.stringify(messages)) {
+        setMessages(data);
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+      }
     }
     setLoading(false);
   };
@@ -58,15 +67,23 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
   const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
 
+    const messageText = newMessage.trim();
+    setNewMessage(''); // Clear immediately for better UX
+    Keyboard.dismiss();
+
     const { error } = await messageService.sendMessage(
       rideId,
       userType,
       user?.id,
-      newMessage.trim()
+      messageText
     );
 
-    if (!error) {
-      setNewMessage('');
+    if (error) {
+      // If error, restore the message
+      setNewMessage(messageText);
+    } else {
+      // Reload messages immediately after sending
+      loadMessages();
     }
   };
 
@@ -84,9 +101,11 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
 
     return (
       <View style={[styles.messageContainer, isMyMessage ? styles.myMessage : styles.theirMessage]}>
-        <Text style={styles.senderLabel}>
-          {item.sender_type === 'driver' ? '🚗 Driver' : '👤 Rider'}
-        </Text>
+        {!isMyMessage && (
+          <Text style={styles.senderLabel}>
+            {item.sender_type === 'driver' ? 'Driver' : 'Rider'}
+          </Text>
+        )}
         <Text style={styles.messageText}>{item.message}</Text>
         <Text style={styles.messageTime}>
           {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -96,13 +115,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Ionicons name="arrow-back" size={24} color={WHITE} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Ride Chat</Text>
-        <View style={{ width: 60 }} />
+        <View style={{ width: 40 }} />
       </View>
 
       <FlatList
@@ -111,12 +130,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        showsVerticalScrollIndicator={false}
       />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={90}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <View style={styles.inputContainer}>
           <TextInput
@@ -124,7 +144,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
             value={newMessage}
             onChangeText={setNewMessage}
             placeholder="Type a message..."
-            placeholderTextColor="#999"
+            placeholderTextColor={TEXT_GRAY}
             multiline
             maxLength={500}
           />
@@ -133,7 +153,7 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
             onPress={handleSendMessage}
             disabled={!newMessage.trim()}
           >
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Ionicons name="send" size={20} color={WHITE} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -144,29 +164,24 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: LIGHT_BACKGROUND,
+    backgroundColor: BLACK,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 15,
-    backgroundColor: '#fff',
+    backgroundColor: DARK_GRAY,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: MEDIUM_GRAY,
   },
   backButton: {
     padding: 5,
   },
-  backButtonText: {
-    color: DARK_ACCENT,
-    fontSize: 16,
-    fontWeight: '600',
-  },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: WHITE,
   },
   messagesList: {
     padding: 15,
@@ -175,33 +190,36 @@ const styles = StyleSheet.create({
   messageContainer: {
     maxWidth: '75%',
     padding: 12,
-    borderRadius: 15,
-    marginBottom: 10,
+    borderRadius: 18,
+    marginBottom: 12,
+    shadowColor: BLACK,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: PRIMARY_PINK,
+    backgroundColor: MY_MESSAGE_BG,
   },
   theirMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    backgroundColor: THEIR_MESSAGE_BG,
   },
   senderLabel: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#666',
+    color: TEXT_GRAY,
     marginBottom: 4,
   },
   messageText: {
     fontSize: 15,
-    color: '#333',
+    color: WHITE,
     lineHeight: 20,
   },
   messageTime: {
     fontSize: 10,
-    color: '#999',
+    color: TEXT_GRAY,
     marginTop: 4,
     alignSelf: 'flex-end',
   },
@@ -210,8 +228,8 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   systemMessage: {
-    backgroundColor: '#e3f2fd',
-    color: '#1976D2',
+    backgroundColor: MEDIUM_GRAY,
+    color: TEXT_GRAY,
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
@@ -220,35 +238,40 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    padding: 10,
-    backgroundColor: '#fff',
+    padding: 12,
+    backgroundColor: DARK_GRAY,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: MEDIUM_GRAY,
     alignItems: 'center',
+    paddingBottom: Platform.OS === 'ios' ? 12 : 12,
   },
   input: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    paddingHorizontal: 15,
+    backgroundColor: MEDIUM_GRAY,
+    borderRadius: 22,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     marginRight: 10,
     maxHeight: 100,
     fontSize: 15,
+    color: WHITE,
+    minHeight: 44,
   },
   sendButton: {
-    backgroundColor: DARK_ACCENT,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    backgroundColor: MY_MESSAGE_BG,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: BLACK,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
   },
   sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 15,
+    opacity: 0.4,
   },
 });
 
