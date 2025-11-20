@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/store';
 import { riderService } from '../../services/supabase';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface RiderProfileScreenProps {
   navigation: any;
@@ -183,7 +184,10 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
             <Text style={styles.cardTitle}>Saved Addresses</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>🏠 Home Address</Text>
+              <View style={styles.labelRow}>
+                <Ionicons name="home" size={16} color={LABEL_GRAY} style={styles.labelIcon} />
+                <Text style={styles.label}>Home Address</Text>
+              </View>
               {isEditing ? (
                 <TextInput
                   style={styles.input}
@@ -198,7 +202,10 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>💼 Work Address</Text>
+              <View style={styles.labelRow}>
+                <Ionicons name="briefcase" size={16} color={LABEL_GRAY} style={styles.labelIcon} />
+                <Text style={styles.label}>Work Address</Text>
+              </View>
               {isEditing ? (
                 <TextInput
                   style={styles.input}
@@ -259,7 +266,10 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
 
           {/* Switch to Driver Button */}
           <TouchableOpacity style={styles.switchModeButton} onPress={handleSwitchToDriver}>
-            <Text style={styles.switchModeButtonText}>🚗 Switch to Driver Mode</Text>
+            <View style={styles.buttonRow}>
+              <Ionicons name="car" size={20} color={WHITE} style={{ marginRight: 8 }} />
+              <Text style={styles.switchModeButtonText}>Switch to Driver Mode</Text>
+            </View>
           </TouchableOpacity>
 
           {/* Logout Button */}
@@ -349,11 +359,18 @@ const styles = StyleSheet.create({
   inputGroup: {
     marginBottom: 15,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  labelIcon: {
+    marginRight: 6,
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
     color: LABEL_GRAY,
-    marginBottom: 5,
   },
   value: {
     fontSize: 16,

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView } from 'react-native';
-import { authService } from '../../services/supabase';
+import { authService, riderService, driverService } from '../../services/supabase';
 import { useAuthStore } from '../../store/store';
 
 interface LoginScreenProps {
@@ -32,7 +32,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      console.warn('Please fill in all fields');
       return;
     }
 
@@ -41,50 +41,40 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       const { data, error } = await authService.login(email, password);
 
       if (error) {
-        Alert.alert('Login Failed', (error as any).message || 'Invalid credentials');
+        console.error('Login Failed:', (error as any).message || 'Invalid credentials');
         return;
       }
 
-      // Determine user type based on email
-      const userType = email.toLowerCase() === 'driver@gmail.com' || email.includes('driver') ? 'driver' : 'rider';
-
       // Use the authenticated user's ID from Supabase
-      const userId = data?.user?.id || `temp-${Date.now()}`;
+      const userId = data?.user?.id;
       
-      const user =
-        userType === 'rider'
-          ? {
-              id: userId,
-              email: email,
-              first_name: 'Rider',
-              last_name: 'User',
-              phone_number: '555-0100',
-              rating: 5.0,
-              total_rides: 0,
-            }
-          : {
-              id: userId,
-              email: email,
-              first_name: 'Driver',
-              last_name: 'User',
-              phone_number: '555-0200',
-              license_number: 'DL12345',
-              vehicle_model: 'Toyota Camry',
-              vehicle_year: 2022,
-              vehicle_color: 'Silver',
-              vehicle_plate: 'ABC123',
-              rating: 5.0,
-              total_rides: 0,
-              is_available: false,
-              current_latitude: 0,
-              current_longitude: 0,
-            };
+      if (!userId) {
+        console.error('Failed to get user ID');
+        return;
+      }
 
-      setUser(user, userType);
-      // Auth state change will automatically navigate to the correct screen
-      Alert.alert('Success', `Welcome back, ${userType}!`);
+      // Try to fetch from users table first (rider)
+      const { data: riderProfile, error: riderError } = await riderService.getRiderProfile(userId);
+      
+      if (riderProfile && !riderError) {
+        // User is a rider
+        setUser(riderProfile, 'rider');
+        return;
+      }
+
+      // Try to fetch from drivers table (driver)
+      const { data: driverProfile, error: driverError } = await driverService.getDriverProfile(userId);
+      
+      if (driverProfile && !driverError) {
+        // User is a driver
+        setUser(driverProfile, 'driver');
+        return;
+      }
+
+      // If neither profile exists, log error
+      console.error('User profile not found. Please register first.');
     } catch (error) {
-      Alert.alert('Error', 'An error occurred during login');
+      console.error('An error occurred during login:', error);
     } finally {
       setLoading(false);
     }

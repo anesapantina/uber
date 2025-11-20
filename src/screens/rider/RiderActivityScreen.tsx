@@ -74,8 +74,23 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
     return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
   };
 
+  const handleRidePress = (ride: any) => {
+    if (ride.status === 'pending' || ride.status === 'accepted' || ride.status === 'in_progress') {
+      // Navigate to tracking for active rides
+      navigation.navigate('RideTracking', { rideId: ride.id });
+    } else if (ride.status === 'completed') {
+      // Navigate to rating screen if not rated yet
+      navigation.navigate('RideRating', { rideId: ride.id });
+    }
+    // For cancelled rides, just show the details (no navigation)
+  };
+
   const renderRideItem = ({ item }: { item: any }) => (
-    <TouchableOpacity style={styles.rideCard}>
+    <TouchableOpacity 
+      style={styles.rideCard}
+      onPress={() => handleRidePress(item)}
+      activeOpacity={0.7}
+    >
       <View style={styles.rideHeader}>
         <Text style={styles.rideDate}>
           {new Date(item.created_at).toLocaleDateString('en-US', {

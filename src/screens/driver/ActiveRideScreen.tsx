@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { driverService } from '../../services/supabase';
+import { driverService, riderService } from '../../services/supabase';
 import { useAuthStore } from '../../store/store';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface ActiveRideScreenProps {
   route: any;
@@ -38,22 +39,41 @@ export const ActiveRideScreen: React.FC<ActiveRideScreenProps> = ({ route, navig
     fetchRide();
     const interval = setInterval(fetchRide, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [rideId]);
 
   const fetchRide = async () => {
     try {
+      // First try to get active ride by driver ID
       const { data, error } = await driverService.getActiveRide(user?.id || '');
+      
       if (error) {
-        Alert.alert('Error', 'Failed to fetch ride');
+        console.error('Error fetching active ride:', error);
+        // If no active ride found, try to fetch by rideId directly
+        const { data: rideData, error: rideError } = await riderService.getRideStatus(rideId);
+        if (!rideError && rideData && rideData.status !== 'cancelled' && rideData.status !== 'completed') {
+          setRide(rideData);
+          setRideStatus(rideData.status);
+        } else {
+          // Ride not found or completed/cancelled
+          Alert.alert('Ride Ended', 'This ride has ended or been cancelled.', [
+            { text: 'OK', onPress: () => navigation.goBack() }
+          ]);
+        }
+        setLoading(false);
         return;
       }
+      
       if (data) {
         setRide(data);
         setRideStatus(data.status);
+      } else {
+        // No active ride found
+        console.log('⚠️ No active ride found for driver');
       }
       setLoading(false);
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      console.error('Exception fetching ride:', error);
+      setLoading(false);
     }
   };
 
@@ -61,13 +81,12 @@ export const ActiveRideScreen: React.FC<ActiveRideScreenProps> = ({ route, navig
     try {
       const { error } = await driverService.startRide(rideId);
       if (error) {
-        Alert.alert('Error', 'Failed to start ride');
+        console.error('Failed to start ride:', error);
         return;
       }
       setRideStatus('in_progress');
-      Alert.alert('Success', 'Ride started');
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      console.error('An error occurred:', error);
     }
   };
 
@@ -76,20 +95,13 @@ export const ActiveRideScreen: React.FC<ActiveRideScreenProps> = ({ route, navig
       const actualFare = ride?.estimated_fare || 0;
       const { error } = await driverService.completeRide(rideId, actualFare);
       if (error) {
-        Alert.alert('Error', 'Failed to complete ride');
+        console.error('Failed to complete ride:', error);
         return;
       }
-
-      Alert.alert('Success', 'Ride completed!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.goBack();
-          },
-        },
-      ]);
+      
+      navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      console.error('An error occurred:', error);
     }
   };
 
@@ -134,7 +146,7 @@ export const ActiveRideScreen: React.FC<ActiveRideScreenProps> = ({ route, navig
           style={styles.chatButton}
           onPress={() => navigation.navigate('Chat', { rideId })}
         >
-          <Text style={styles.chatButtonText}>💬</Text>
+          <Ionicons name="chatbubble" size={18} color={WHITE} />
         </TouchableOpacity>
       </View>
       
@@ -167,7 +179,10 @@ export const ActiveRideScreen: React.FC<ActiveRideScreenProps> = ({ route, navig
           <Text style={[styles.label, { marginTop: 12 }]}>
             Rating
           </Text>
-          <Text style={styles.value}>⭐ {ride?.rider?.rating}</Text>
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={16} color="#ffc107" />
+            <Text style={styles.value}>{ride?.rider?.rating}</Text>
+          </View>
 
           <Text style={[styles.label, { marginTop: 12 }]}>
             Phone
@@ -271,9 +286,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
-  },
-  chatButtonText: {
-    fontSize: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   container: {
     flex: 1,
@@ -337,6 +351,10 @@ const styles = StyleSheet.create({
   col: {
     flex: 1,
     paddingHorizontal: 5,
+    alignItems: 'center',
+  },
+  ratingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
   buttonContainer: {

@@ -1,34 +1,41 @@
 // ✅ React & Navigation
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import 'react-native-gesture-handler';
-import { Text } from 'react-native';
+import { Text, Platform, ActivityIndicator, View } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import * as Font from 'expo-font';
 
-// ✅ Store
+// Web font setup
+if (Platform.OS === 'web') {
+  require('./react-native-vector-icons-web');
+}
+
+// Store
 import { useAuthStore } from './src/store/store';
 
-// ✅ Rider Screens
+// Rider Screens
 import RideHomeScreen from './src/screens/rider/RideHomeScreen';
-import RideRequestScreen from './src/screens/rider/RideRequestScreen';
+import { RideRequestScreen } from './src/screens/rider/RideRequestScreen';
 import RideTrackingScreen from './src/screens/rider/RideTrackingScreen';
 import RideRatingScreen from './src/screens/rider/RideRatingScreen';
 import RiderProfileScreen from './src/screens/rider/RiderProfileScreen';
 import RiderActivityScreen from './src/screens/rider/RiderActivityScreen';
 
-// ✅ Driver Screens
+// Driver Screens
 import ActiveRideScreen from './src/screens/driver/ActiveRideScreen';
 import AvailableRidesScreen from './src/screens/driver/AvailableRidesScreen';
 import DriverProfileScreen from './src/screens/driver/DriverProfileScreen';
 
-// ✅ Auth Screens
+// Auth Screens
 import SplashScreen from './src/screens/auth/SplashScreen';
 import WelcomeScreen from './src/screens/auth/WelcomeScreen';
 import LoginScreen from './src/screens/auth/LoginScreen';
 import RegisterScreen from './src/screens/auth/RegisterScreen';
 
-// ✅ Chat Screen
+// Chat Screen
 import ChatScreen from './src/screens/chat/ChatScreen';
 
 const Stack = createStackNavigator();
@@ -39,20 +46,16 @@ function DriverTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: '#000000',
-        tabBarInactiveTintColor: '#3F3F3F',
+        tabBarActiveTintColor: '#FFFFFF',
+        tabBarInactiveTintColor: '#666666',
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E5E5',
+          backgroundColor: '#000000',
+          borderTopWidth: 0,
           paddingBottom: 5,
           paddingTop: 5,
           height: 60,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarShowLabel: false,
         headerShown: false,
       }}
     >
@@ -60,16 +63,14 @@ function DriverTabs() {
         name="AvailableRides"
         component={AvailableRidesScreen}
         options={{
-          tabBarLabel: 'Rides',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>🚗</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="home" size={28} color={color} />,
         }}
       />
       <Tab.Screen
         name="DriverProfile"
         component={DriverProfileScreen}
         options={{
-          tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>👤</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="person" size={28} color={color} />,
         }}
       />
     </Tab.Navigator>
@@ -81,20 +82,16 @@ function RiderTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: '#000000',
-        tabBarInactiveTintColor: '#3F3F3F',
+        tabBarActiveTintColor: '#FFFFFF',
+        tabBarInactiveTintColor: '#666666',
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E5E5',
+          backgroundColor: '#000000',
+          borderTopWidth: 0,
           paddingBottom: 5,
           paddingTop: 5,
           height: 60,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarShowLabel: false,
         headerShown: false,
       }}
     >
@@ -102,24 +99,21 @@ function RiderTabs() {
         name="RideHome"
         component={RideRequestScreen}
         options={{
-          tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>🏠</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="home" size={28} color={color} />,
         }}
       />
       <Tab.Screen
         name="RiderActivity"
         component={RiderActivityScreen}
         options={{
-          tabBarLabel: 'Activity',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>📋</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="list" size={28} color={color} />,
         }}
       />
       <Tab.Screen
         name="RiderProfile"
         component={RiderProfileScreen}
         options={{
-          tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>👤</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="person" size={28} color={color} />,
         }}
       />
     </Tab.Navigator>
@@ -129,6 +123,34 @@ function RiderTabs() {
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const userType = useAuthStore((state) => state.userType);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+
+  useEffect(() => {
+    async function loadFonts() {
+      try {
+        if (Platform.OS !== 'web') {
+          await Font.loadAsync({
+            'Ionicons': require('react-native-vector-icons/Fonts/Ionicons.ttf'),
+            'MaterialIcons': require('react-native-vector-icons/Fonts/MaterialIcons.ttf'),
+            'FontAwesome': require('react-native-vector-icons/Fonts/FontAwesome.ttf'),
+          });
+        }
+        setFontsLoaded(true);
+      } catch (error) {
+        console.error('Error loading fonts:', error);
+        setFontsLoaded(true); // Continue anyway
+      }
+    }
+    loadFonts();
+  }, []);
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#000000" />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer>

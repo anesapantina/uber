@@ -9,6 +9,7 @@ import { RideTrackingScreen } from '../screens/rider/RideTrackingScreen';
 import { RideRatingScreen } from '../screens/rider/RideRatingScreen';
 import { RiderActivityScreen } from '../screens/rider/RiderActivityScreen';
 import { RiderProfileScreen } from '../screens/rider/RiderProfileScreen';
+import { DestinationSelectScreen } from '../screens/rider/DestinationSelectScreen';
 import { AvailableRidesScreen } from '../screens/driver/AvailableRidesScreen';
 import { ActiveRideScreen } from '../screens/driver/ActiveRideScreen';
 import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
@@ -98,6 +99,11 @@ const RiderStack = () => (
     <Stack.Screen
       name="RiderTabs"
       component={RiderTabs}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="DestinationSelect"
+      component={DestinationSelectScreen}
       options={{ headerShown: false }}
     />
     <Stack.Screen

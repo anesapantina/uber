@@ -405,14 +405,14 @@ export const driverService = {
   updateDriverProfile: async (driverId: string, updates: any) => {
     try {
       console.log('📝 Checking if driver exists:', driverId);
-      
+
       // Check if driver already exists
       const { data: existingDriver } = await supabase
         .from('drivers')
         .select('id')
         .eq('id', driverId)
         .single();
-      
+
       if (existingDriver) {
         // Driver exists, just update (exclude email to avoid unique constraint)
         console.log('📝 Updating existing driver profile');
@@ -425,7 +425,7 @@ export const driverService = {
           })
           .eq('id', driverId)
           .select();
-          
+
         if (error) throw error;
         console.log('✅ Driver profile updated:', data);
         return { data: data?.[0], error: null };
@@ -442,7 +442,7 @@ export const driverService = {
             updated_at: new Date().toISOString(),
           })
           .select();
-          
+
         if (error) throw error;
         console.log('✅ Driver profile created:', data);
         return { data: data?.[0], error: null };
@@ -514,7 +514,7 @@ export const driverService = {
   getAvailableRides: async (driverLat: number, driverLng: number, radiusKm: number = 5) => {
     try {
       console.log('🔍 Fetching available rides from REAL Supabase');
-      
+
       const { data, error } = await supabase
         .from('rides')
         .select(
@@ -549,7 +549,7 @@ export const driverService = {
   acceptRide: async (rideId: string, driverId: string) => {
     try {
       console.log('🚗 Accepting ride:', rideId, 'for driver:', driverId);
-      
+
       const { data, error } = await supabase
         .from('rides')
         .update({
@@ -565,9 +565,9 @@ export const driverService = {
         console.error('❌ Accept ride error:', error);
         throw error;
       }
-      
+
       console.log('✅ Ride accepted successfully:', data);
-      
+
       // Send automatic message that ride was accepted
       const { messageService } = await import('./supabase');
       await messageService.sendMessage(
@@ -576,7 +576,7 @@ export const driverService = {
         null,
         '✅ Your ride has been accepted! The driver is on the way.'
       );
-      
+
       return { data: data?.[0], error: null };
     } catch (error) {
       console.error('❌ Accept ride exception:', error);
@@ -598,7 +598,7 @@ export const driverService = {
         .select();
 
       if (error) throw error;
-      
+
       // Send automatic message that driver has arrived
       const { messageService } = await import('./supabase');
       await messageService.sendMessage(
@@ -607,7 +607,7 @@ export const driverService = {
         null,
         '🚗 Your driver has arrived! Have a safe trip.'
       );
-      
+
       return { data: data?.[0], error: null };
     } catch (error) {
       return { data: null, error };
@@ -678,6 +678,30 @@ export const driverService = {
       if (error) throw error;
       return { data: data?.[0], error: null };
     } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  // Deny ride (return to pending status for other drivers)
+  denyRide: async (rideId: string) => {
+    try {
+      console.log('🚫 Denying ride:', rideId);
+      const { data, error } = await supabase
+        .from('rides')
+        .update({
+          status: 'pending',
+          driver_id: null,
+          accepted_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', rideId)
+        .select();
+
+      if (error) throw error;
+      console.log('✅ Ride returned to pending status');
+      return { data: data?.[0], error: null };
+    } catch (error) {
+      console.error('❌ Error denying ride:', error);
       return { data: null, error };
     }
   },
@@ -1014,8 +1038,10 @@ export const messageService = {
 
   // Subscribe to new messages for a ride
   subscribeToMessages: (rideId: string, callback: (message: any) => void) => {
-    const subscription = supabase
-      .channel(`ride_messages_${rideId}`)
+    console.log('🔌 Creating subscription channel for ride:', rideId);
+
+    const channel = supabase
+      .channel(`messages_${rideId}`)
       .on(
         'postgres_changes',
         {
@@ -1025,12 +1051,15 @@ export const messageService = {
           filter: `ride_id=eq.${rideId}`,
         },
         (payload) => {
+          console.log('🔔 Real-time event received:', payload);
           callback(payload.new);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status);
+      });
 
-    return subscription;
+    return channel;
   },
 };
 

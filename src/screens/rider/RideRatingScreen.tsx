@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { riderService, ratingService } from '../../services/supabase';
 import { useAuthStore } from '../../store/store';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface RideRatingScreenProps {
   route: any;
@@ -69,7 +70,12 @@ export const RideRatingScreen: React.FC<RideRatingScreenProps> = ({ route, navig
               onPress={() => setRating(star)}
               disabled={loading}
             >
-              <Text style={[styles.star, rating >= star && styles.starSelected]}>★</Text>
+              <Ionicons 
+                name={rating >= star ? "star" : "star-outline"} 
+                size={40} 
+                color={rating >= star ? "#ffc107" : "#ddd"}
+                style={{ marginHorizontal: 8 }}
+              />
             </TouchableOpacity>
           ))}
         </View>
@@ -130,14 +136,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginBottom: 20,
-  },
-  star: {
-    fontSize: 40,
-    color: '#ddd',
-    marginHorizontal: 10,
-  },
-  starSelected: {
-    color: '#ffc107',
   },
   ratingText: {
     textAlign: 'center',
