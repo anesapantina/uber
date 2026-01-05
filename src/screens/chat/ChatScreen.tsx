@@ -231,10 +231,13 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => 
               const currentRoute = navigation.getState().routes[navigation.getState().index];
               if (currentRoute.params?.from) {
                 navigation.navigate(currentRoute.params.from);
+              } else if (navigation.canGoBack()) {
+                navigation.goBack();
               } else if (userType === 'driver') {
-                navigation.navigate('DriverTabs', { screen: 'Active' });
+                // If we can't go back, go to the main driver screen
+                navigation.navigate('DriverTabs');
               } else {
-                navigation.navigate('RiderTabs', { screen: 'Home' });
+                navigation.navigate('RiderTabs');
               }
             }}
             style={styles.backButton}

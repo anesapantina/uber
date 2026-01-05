@@ -7,11 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  SectionList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/store';
 import { riderService } from '../../services/supabase';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { getScheduledRides, deleteScheduledRide, ScheduledRide } from '../../services/locationService';
+import { CommonActions } from '@react-navigation/native';
 
 interface RiderActivityScreenProps {
   navigation: any;
@@ -20,28 +23,38 @@ interface RiderActivityScreenProps {
 // --- COLOR DEFINITIONS ---
 const BLACK = '#000000';
 const WHITE = '#FFFFFF';
-const GRAY_100 = '#F5F5F5';
-const GRAY_200 = '#E5E5E5';
-const GRAY_700 = '#3F3F3F';
-const LIGHT_BACKGROUND = '#fcfcfc';
-const CARD_BACKGROUND = '#ffffff';
-const TEXT_COLOR = '#333333';
-const LABEL_GRAY = '#666';
+const GRAY_100 = '#1A1A1A';
+const GRAY_200 = '#2A2A2A';
+const GRAY_700 = '#CCCCCC';
+const LIGHT_BACKGROUND = BLACK;
+const CARD_BACKGROUND = GRAY_100;
+const TEXT_COLOR = WHITE;
+const LABEL_GRAY = '#999';
 
 export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ navigation }) => {
   const user = useAuthStore((state: any) => state.user);
   const [rides, setRides] = useState<any[]>([]);
+  const [scheduledRides, setScheduledRides] = useState<ScheduledRide[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchRideHistory();
+    fetchData();
+    // Set up a listener to refresh when the screen is focused
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchData();
+    });
+    return unsubscribe;
   }, []);
+
+  const fetchData = async () => {
+    await Promise.all([fetchRideHistory(), fetchScheduledRides()]);
+  };
 
   const fetchRideHistory = async () => {
     try {
       setLoading(true);
       const { data, error } = await riderService.getRideHistory(user?.id || '', 50);
-      
+
       if (error) {
         console.error('Error fetching ride history:', error);
         setRides([]);
@@ -54,6 +67,16 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
       setRides([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchScheduledRides = async () => {
+    try {
+      const scheduled = await getScheduledRides();
+      setScheduledRides(scheduled);
+    } catch (error) {
+      console.error('Error fetching scheduled rides:', error);
+      setScheduledRides([]);
     }
   };
 
@@ -85,8 +108,84 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
     // For cancelled rides, just show the details (no navigation)
   };
 
+  const handleConfirmScheduledRide = async (scheduledRide: ScheduledRide) => {
+    // Delete the scheduled ride first
+    await deleteScheduledRide(scheduledRide.id);
+    await fetchScheduledRides();
+
+    // Navigate to DestinationSelectScreen with scheduled time
+    // Access parent stack navigator
+    navigation.navigate('DestinationSelect', {
+      scheduledTime: scheduledRide.scheduledTime,
+    });
+  };
+
+  const handleDeleteScheduledRide = async (rideId: string) => {
+    Alert.alert(
+      'Delete Scheduled Ride',
+      'Are you sure you want to delete this scheduled ride?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteScheduledRide(rideId);
+            await fetchScheduledRides();
+          },
+        },
+      ]
+    );
+  };
+
+  const formatScheduledTime = (isoTime: string) => {
+    const time = new Date(isoTime);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let dateStr = '';
+    if (time.toDateString() === today.toDateString()) {
+      dateStr = 'Today';
+    } else if (time.toDateString() === tomorrow.toDateString()) {
+      dateStr = 'Tomorrow';
+    } else {
+      dateStr = time.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${dateStr} at ${timeStr}`;
+  };
+
+  const renderScheduledRideItem = ({ item }: { item: ScheduledRide }) => (
+    <View style={styles.scheduledRideCard}>
+      <View style={styles.rideHeader}>
+        <View style={styles.scheduledBadge}>
+          <Ionicons name="time-outline" size={16} color={WHITE} />
+          <Text style={styles.scheduledBadgeText}>{formatScheduledTime(item.scheduledTime)}</Text>
+        </View>
+        <TouchableOpacity onPress={() => handleDeleteScheduledRide(item.id)}>
+          <Ionicons name="trash-outline" size={20} color="#999" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.scheduledRideInfo}>
+        <Ionicons name="calendar-outline" size={24} color={WHITE} />
+        <Text style={styles.scheduledRideText}>Scheduled ride - Enter your addresses to request</Text>
+      </View>
+
+      <TouchableOpacity
+        style={styles.confirmButton}
+        onPress={() => handleConfirmScheduledRide(item)}
+      >
+        <Text style={styles.confirmButtonText}>Enter Addresses & Request</Text>
+        <Ionicons name="arrow-forward" size={18} color={BLACK} />
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderRideItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.rideCard}
       onPress={() => handleRidePress(item)}
       activeOpacity={0.7}
@@ -106,7 +205,7 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
 
       <View style={styles.routeContainer}>
         <View style={styles.routeItem}>
-          <Ionicons name="location" size={20} color={BLACK} style={styles.routeIcon} />
+          <Ionicons name="location" size={20} color={WHITE} style={styles.routeIcon} />
           <View style={styles.routeDetails}>
             <Text style={styles.routeLabel}>From</Text>
             <Text style={styles.address}>{item.pickup_address}</Text>
@@ -116,7 +215,7 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
         <View style={styles.routeDivider} />
 
         <View style={styles.routeItem}>
-          <Ionicons name="flag" size={20} color={BLACK} style={styles.routeIcon} />
+          <Ionicons name="flag" size={20} color={WHITE} style={styles.routeIcon} />
           <View style={styles.routeDetails}>
             <Text style={styles.routeLabel}>To</Text>
             <Text style={styles.address}>{item.dropoff_address}</Text>
@@ -161,22 +260,37 @@ export const RiderActivityScreen: React.FC<RiderActivityScreenProps> = ({ naviga
 
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={BLACK} />
+            <ActivityIndicator size="large" color={WHITE} />
           </View>
-        ) : rides.length === 0 ? (
+        ) : scheduledRides.length === 0 && rides.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="car-outline" size={64} color={LABEL_GRAY} style={styles.emptyIcon} />
             <Text style={styles.emptyText}>No rides yet</Text>
             <Text style={styles.emptySubtext}>Your ride history will appear here</Text>
           </View>
         ) : (
-          <FlatList
-            data={rides}
-            renderItem={renderRideItem}
-            keyExtractor={(item) => item.id}
+          <SectionList
+            sections={[
+              ...(scheduledRides.length > 0
+                ? [{ title: 'Scheduled Rides', data: scheduledRides, type: 'scheduled' }]
+                : []),
+              ...(rides.length > 0
+                ? [{ title: 'Ride History', data: rides, type: 'history' }]
+                : []),
+            ]}
+            renderItem={({ item, section }) =>
+              section.type === 'scheduled' ? renderScheduledRideItem({ item }) : renderRideItem({ item })
+            }
+            renderSectionHeader={({ section }) => (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              </View>
+            )}
+            keyExtractor={(item, index) =>
+              'id' in item ? item.id : `ride-${index}`
+            }
             contentContainerStyle={styles.listContent}
-            refreshing={loading}
-            onRefresh={fetchRideHistory}
+            stickySectionHeadersEnabled={false}
           />
         )}
       </View>
@@ -191,7 +305,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: LIGHT_BACKGROUND,
+    backgroundColor: BLACK,
   },
   header: {
     backgroundColor: BLACK,
@@ -335,6 +449,73 @@ const styles = StyleSheet.create({
   driverVehicle: {
     fontSize: 12,
     color: LABEL_GRAY,
+  },
+  sectionHeader: {
+    backgroundColor: BLACK,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+  },
+  sectionHeaderText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: WHITE,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scheduledRideCard: {
+    backgroundColor: GRAY_100,
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: WHITE,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  scheduledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: WHITE,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 6,
+  },
+  scheduledBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: BLACK,
+  },
+  scheduledRideInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 20,
+  },
+  scheduledRideText: {
+    flex: 1,
+    fontSize: 14,
+    color: WHITE,
+    lineHeight: 20,
+  },
+  confirmButton: {
+    flexDirection: 'row',
+    backgroundColor: WHITE,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  confirmButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: BLACK,
   },
 });
 

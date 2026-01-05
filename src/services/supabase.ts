@@ -329,6 +329,18 @@ export const riderService = {
   // Cancel ride
   cancelRide: async (rideId: string, reason: string = '') => {
     try {
+      const CANCELLATION_FEE = 2.00; // €2 cancellation fee
+
+      // First, get the ride details to find the rider
+      const { data: ride, error: rideError } = await supabase
+        .from('rides')
+        .select('rider_id, status')
+        .eq('id', rideId)
+        .single();
+
+      if (rideError) throw rideError;
+
+      // Update the ride status to cancelled
       const { data, error } = await supabase
         .from('rides')
         .update({
@@ -336,12 +348,49 @@ export const riderService = {
           cancellation_reason: reason,
           cancelled_by: 'rider',
           cancelled_at: new Date().toISOString(),
+          cancellation_fee: CANCELLATION_FEE,
           updated_at: new Date().toISOString(),
         })
         .eq('id', rideId)
         .select();
 
       if (error) throw error;
+
+      // Deduct cancellation fee from rider's wallet
+      const { data: riderData, error: riderError } = await supabase
+        .from('users')
+        .select('wallet_balance')
+        .eq('id', ride.rider_id)
+        .single();
+
+      if (!riderError && riderData) {
+        const newBalance = (riderData.wallet_balance || 0) - CANCELLATION_FEE;
+
+        await supabase
+          .from('users')
+          .update({
+            wallet_balance: newBalance,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', ride.rider_id);
+      }
+
+      // Create a payment record for the cancellation fee
+      await supabase
+        .from('payments')
+        .insert([
+          {
+            ride_id: rideId,
+            user_id: ride.rider_id,
+            amount: CANCELLATION_FEE,
+            payment_method: 'cancellation_fee',
+            payment_status: 'completed',
+            transaction_id: `CANCEL-${Date.now()}`,
+            card_last_four: null,
+            receipt_url: null,
+          },
+        ]);
+
       return { data: data?.[0], error: null };
     } catch (error) {
       return { data: null, error };

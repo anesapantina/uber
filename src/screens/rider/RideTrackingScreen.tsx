@@ -10,9 +10,12 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import { riderService } from '../../services/supabase';
 import { useRiderStore, useAuthStore } from '../../store/store';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { CancellationFeeModal } from '../../components/CancellationFeeModal';
+import { GOOGLE_MAPS_DARK_STYLE } from '../../utils/config';
 
 // Conditional map import
 let MapView: any, Marker: any, Polyline: any;
@@ -36,11 +39,11 @@ interface RideTrackingScreenProps {
 // --- COLOR DEFINITIONS ---
 const BLACK = '#000000';
 const WHITE = '#FFFFFF';
-const GRAY_100 = '#F5F5F5';
-const GRAY_200 = '#E5E5E5';
-const GRAY_300 = '#D4D4D4';
-const GRAY_700 = '#3F3F3F';
-const GRAY_900 = '#171717';
+const GRAY_100 = '#1A1A1A';
+const GRAY_200 = '#2A2A2A';
+const GRAY_300 = '#3A3A3A';
+const GRAY_700 = '#CCCCCC';
+const GRAY_900 = '#0A0A0A';
 
 export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, navigation }) => {
   const { rideId } = route.params;
@@ -48,7 +51,8 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
   const [ride, setRide] = useState<any>(currentRide);
   const [loading, setLoading] = useState(!currentRide);
   const [refreshing, setRefreshing] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
   const setCurrentRideStore = useRiderStore((state: any) => state.setCurrentRide);
   const setUser = useAuthStore((state: any) => state.setUser);
   const logout = useAuthStore((state: any) => state.logout);
@@ -57,7 +61,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
   // Get user's current location with continuous tracking
   useEffect(() => {
     let watchId: number | null = null;
-    
+
     const startLocationTracking = () => {
       try {
         if (Platform.OS === 'web') {
@@ -111,11 +115,11 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
         const { data, error } = await riderService.getRideStatus(rideId);
         if (!error && data) {
           const previousStatus = ride?.status;
-          
+
           setRide(data);
           setCurrentRideStore(data);
           setLoading(false);
-          
+
           // If ride is completed, navigate to rating screen
           if (data.status === 'completed') {
             navigation.replace('RideRating', { rideId: data.id });
@@ -139,48 +143,32 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
     return () => clearInterval(interval);
   }, [rideId, ride?.status]);
 
-  const handleCancelRide = async () => {
-    Alert.alert('Cancel Ride', 'Are you sure you want to cancel this ride?', [
-      { text: 'No', onPress: () => {} },
-      {
-        text: 'Yes',
-        onPress: async () => {
-          try {
-            const { error } = await riderService.cancelRide(rideId, 'Rider cancelled');
-            if (error) {
-              console.error('Failed to cancel ride:', error);
-              return;
-            }
-            setCurrentRideStore(null);
-            navigation.navigate('RiderTabs');
-          } catch (error) {
-            Alert.alert('Error', 'An error occurred');
-          }
-        },
-      },
-    ]);
+  const handleCancelRide = () => {
+    setShowCancellationModal(true);
+  };
+
+  const handleConfirmCancellation = () => {
+    const CANCELLATION_FEE = 2.00;
+    setShowCancellationModal(false);
+    // Wait for modal animation to complete before navigating
+    setTimeout(() => {
+      navigation.navigate('PaymentMethod', {
+        isCancellation: true,
+        rideId: rideId,
+        cancellationFee: CANCELLATION_FEE,
+      });
+    }, 300);
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          onPress: async () => {
-            try {
-              const { authService } = await import('../../services/supabase');
-              await authService.logout();
-              logout();
-            } catch (error) {
-              console.error('Logout error:', error);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      const { authService } = await import('../../services/supabase');
+      await authService.logout();
+      logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      logout();
+    }
   };
 
   const getStatusText = (status: string) => {
@@ -224,11 +212,31 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
 
   // Handle cancelled/completed state
   if (!ride || ride.status === 'cancelled' || ride.status === 'completed') {
+    const isCancelled = ride?.status === 'cancelled';
     return (
       <View style={styles.loadingContainer}>
+        <Ionicons
+          name={isCancelled ? "close-circle" : "checkmark-circle"}
+          size={64}
+          color={isCancelled ? "#999" : "#4CAF50"}
+          style={{ marginBottom: 20 }}
+        />
         <Text style={styles.title}>Ride {ride?.status}</Text>
-        <TouchableOpacity style={[styles.button, { backgroundColor: BLACK }]} onPress={() => navigation.navigate('RiderTabs')}>
-          <Text style={styles.buttonText}>Go Back to Home</Text>
+        <Text style={{ color: GRAY_700, marginBottom: 20, textAlign: 'center', paddingHorizontal: 20 }}>
+          {isCancelled
+            ? "Your ride has been cancelled. You can request a new ride."
+            : "Thank you for riding with us!"}
+        </Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: BLACK }]}
+          onPress={() => {
+            const parent = navigation.getParent();
+            if (parent) {
+              navigation.navigate('DestinationSelect');
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>Request New Ride</Text>
         </TouchableOpacity>
       </View>
     );
@@ -237,24 +245,26 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
   return (
     <View style={styles.container}>
       {/* BACK BUTTON - Floating top left */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.floatingBackButton}
         onPress={() => {
-          // Don't clear the ride, just navigate back
+          // CRITICAL FIX: Don't clear the ride, just navigate back
+          // The ride will persist in the store
+          console.log('Navigating back, keeping ride in store');
           navigation.navigate('RiderTabs', { screen: 'Home' });
         }}
       >
-        <Ionicons name="arrow-back" size={24} color={BLACK} />
+        <Ionicons name="arrow-back" size={24} color={WHITE} />
       </TouchableOpacity>
-      
+
       {/* SETTINGS BUTTON - Floating top right */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.floatingSettingsButton}
-        onPress={() => {}}
+        onPress={() => { }}
       >
-        <Ionicons name="ellipsis-horizontal" size={24} color={BLACK} />
+        <Ionicons name="ellipsis-horizontal" size={24} color={WHITE} />
       </TouchableOpacity>
-      
+
       {/* MAP/NAVIGATION VIEW */}
       <MapView
         style={styles.map}
@@ -265,108 +275,8 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
           longitudeDelta: Math.abs(ride.pickup_longitude - ride.dropoff_longitude) + 0.1,
         }}
         mapType="standard"
-        customMapStyle={[
-          {
-            elementType: 'geometry',
-            stylers: [{ color: '#212121' }],
-          },
-          {
-            elementType: 'labels.icon',
-            stylers: [{ visibility: 'off' }],
-          },
-          {
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#757575' }],
-          },
-          {
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#212121' }],
-          },
-          {
-            featureType: 'administrative',
-            elementType: 'geometry',
-            stylers: [{ color: '#757575' }],
-          },
-          {
-            featureType: 'administrative.country',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#9e9e9e' }],
-          },
-          {
-            featureType: 'administrative.land_parcel',
-            stylers: [{ visibility: 'off' }],
-          },
-          {
-            featureType: 'administrative.locality',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#bdbdbd' }],
-          },
-          {
-            featureType: 'poi',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#757575' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'geometry',
-            stylers: [{ color: '#181818' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#616161' }],
-          },
-          {
-            featureType: 'poi.park',
-            elementType: 'labels.text.stroke',
-            stylers: [{ color: '#1b1b1b' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'geometry.fill',
-            stylers: [{ color: '#2c2c2c' }],
-          },
-          {
-            featureType: 'road',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#8a8a8a' }],
-          },
-          {
-            featureType: 'road.arterial',
-            elementType: 'geometry',
-            stylers: [{ color: '#373737' }],
-          },
-          {
-            featureType: 'road.highway',
-            elementType: 'geometry',
-            stylers: [{ color: '#3c3c3c' }],
-          },
-          {
-            featureType: 'road.highway.controlled_access',
-            elementType: 'geometry',
-            stylers: [{ color: '#4e4e4e' }],
-          },
-          {
-            featureType: 'road.local',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#616161' }],
-          },
-          {
-            featureType: 'transit',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#757575' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'geometry',
-            stylers: [{ color: '#000000' }],
-          },
-          {
-            featureType: 'water',
-            elementType: 'labels.text.fill',
-            stylers: [{ color: '#3d3d3d' }],
-          },
-        ]}
+        customMapStyle={GOOGLE_MAPS_DARK_STYLE}
+        userInterfaceStyle="dark"
       >
         {/* Current Location Marker (Rider) */}
         {currentLocation && (
@@ -377,10 +287,28 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
             }}
             title="Your Location"
             description="You are here"
-            pinColor="#4A90E2"
-          />
+            anchor={{ x: 0.5, y: 0.5 }}
+          >
+            <View style={{
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: 'rgba(0, 122, 255, 0.3)',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <View style={{
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                backgroundColor: '#007AFF', // System Blue
+                borderWidth: 2,
+                borderColor: 'white',
+              }} />
+            </View>
+          </Marker>
         )}
-        
+
         {/* Driver Location Marker (when accepted or in progress) */}
         {(ride.status === 'accepted' || ride.status === 'in_progress') && ride.driver?.current_latitude && ride.driver?.current_longitude && (
           <Marker
@@ -393,7 +321,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
             pinColor="#00FF00"
           />
         )}
-        
+
         {/* Pickup Marker */}
         <Marker
           coordinate={{
@@ -402,9 +330,20 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
           }}
           title="Pickup Location"
           description={ride.pickup_address}
-          pinColor="#000000"
-        />
-        
+        >
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="location-sharp" size={40} color="black" />
+            <View style={{
+              position: 'absolute',
+              top: 8,
+              width: 12,
+              height: 12,
+              borderRadius: 6,
+              backgroundColor: 'white'
+            }} />
+          </View>
+        </Marker>
+
         {/* Dropoff Marker */}
         <Marker
           coordinate={{
@@ -413,8 +352,19 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
           }}
           title="Dropoff Location"
           description={ride.dropoff_address}
-          pinColor="#FF0000"
-        />
+        >
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="location-sharp" size={40} color="black" />
+            <View style={{
+              position: 'absolute',
+              top: 8,
+              width: 12,
+              height: 12,
+              borderRadius: 6,
+              backgroundColor: 'white'
+            }} />
+          </View>
+        </Marker>
         {/* Route Line */}
         <Polyline
           coordinates={[
@@ -430,7 +380,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
       <View style={styles.overlayCard}>
         {/* HANDLE BAR */}
         <View style={styles.handleBar} />
-        
+
         {ride.status === 'pending' ? (
           // PENDING STATE
           <View style={styles.pendingContainer}>
@@ -447,10 +397,10 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
               <Text style={styles.matchText}>You've been matched with a driver</Text>
             </View>
 
-            
+
             {/* Pickup time indicator */}
             <Text style={styles.pickupTime}>Pickup in 2 min</Text>
-            
+
             {/* Driver Details Section */}
             <View style={styles.driverSection}>
               <View style={styles.driverImageContainer}>
@@ -462,7 +412,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
                   <Text style={styles.ratingText}>{ride.driver?.rating || '4.9'}</Text>
                 </View>
               </View>
-              
+
               <View style={styles.driverDetails}>
                 <Text style={styles.driverName}>
                   {ride.driver?.first_name || 'Driver'}
@@ -474,7 +424,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.vehiclePlate}>
                 <Text style={styles.plateText}>
                   {ride.driver?.vehicle_plate || '3M53AF2'}
@@ -484,45 +434,53 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
                 </Text>
               </View>
             </View>
-            
+
             {/* Action Buttons */}
             <View style={styles.actionButtons}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.messageButton}
                 onPress={() => navigation.navigate('Chat', { rideId: ride.id })}
               >
-                <Ionicons name="chatbubble-outline" size={20} color={BLACK} />
+                <Ionicons name="chatbubble-outline" size={20} color={WHITE} />
                 <Text style={styles.buttonLabel}>Send a message</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.callButton}>
-                <Ionicons name="call-outline" size={20} color={BLACK} />
+                <Ionicons name="call-outline" size={20} color={WHITE} />
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.moreButton}>
-                <Ionicons name="ellipsis-horizontal" size={20} color={BLACK} />
+                <Ionicons name="ellipsis-horizontal" size={20} color={WHITE} />
               </TouchableOpacity>
             </View>
 
           </View>
         )}
-        
+
         {/* Ride Details */}
         <View style={styles.rideDetailsSection}>
           <Text style={styles.rideDetailsTitle}>Ride details</Text>
           <Text style={styles.rideDetailsSubtitle}>Meet at {ride.pickup_address}</Text>
         </View>
-        
+
         {/* Cancel Button */}
         {ride.status !== 'in_progress' && ride.status !== 'completed' && (
-          <TouchableOpacity 
-            style={styles.cancelButton} 
+          <TouchableOpacity
+            style={styles.cancelButton}
             onPress={handleCancelRide}
           >
             <Text style={styles.cancelButtonText}>Cancel ride</Text>
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Cancellation Fee Modal */}
+      <CancellationFeeModal
+        visible={showCancellationModal}
+        onCancel={() => setShowCancellationModal(false)}
+        onConfirm={handleConfirmCancellation}
+        cancellationFee={2.00}
+      />
     </View>
   );
 };
@@ -530,7 +488,7 @@ export const RideTrackingScreen: React.FC<RideTrackingScreenProps> = ({ route, n
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: BLACK,
   },
   floatingBackButton: {
     position: 'absolute',
@@ -539,13 +497,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: WHITE,
+    backgroundColor: GRAY_200,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.5,
     shadowRadius: 4,
     elevation: 5,
   },
@@ -556,13 +514,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: WHITE,
+    backgroundColor: GRAY_200,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.5,
     shadowRadius: 4,
     elevation: 5,
   },
@@ -570,7 +528,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: WHITE,
+    backgroundColor: BLACK,
   },
   map: {
     flex: 1,
@@ -581,7 +539,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: WHITE,
+    backgroundColor: GRAY_900,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -589,7 +547,7 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.5,
     shadowRadius: 8,
     elevation: 10,
   },
@@ -608,7 +566,7 @@ const styles = StyleSheet.create({
   pendingTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: BLACK,
+    color: WHITE,
     marginBottom: 8,
   },
   pendingSubtitle: {
@@ -635,7 +593,7 @@ const styles = StyleSheet.create({
   pickupTime: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: BLACK,
+    color: WHITE,
     marginBottom: 20,
   },
   driverSection: {
@@ -686,7 +644,7 @@ const styles = StyleSheet.create({
   driverName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: BLACK,
+    color: WHITE,
     marginBottom: 4,
   },
   vehicleInfo: {
@@ -704,7 +662,7 @@ const styles = StyleSheet.create({
   plateText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: BLACK,
+    color: WHITE,
     marginBottom: 2,
   },
   vehicleColor: {
@@ -728,7 +686,7 @@ const styles = StyleSheet.create({
   buttonLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: BLACK,
+    color: WHITE,
     marginLeft: 8,
   },
   callButton: {
@@ -754,7 +712,7 @@ const styles = StyleSheet.create({
   rideDetailsTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: BLACK,
+    color: WHITE,
     marginBottom: 4,
   },
   rideDetailsSubtitle: {
@@ -762,7 +720,7 @@ const styles = StyleSheet.create({
     color: GRAY_700,
   },
   cancelButton: {
-    backgroundColor: WHITE,
+    backgroundColor: GRAY_200,
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
@@ -772,7 +730,7 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: BLACK,
+    color: WHITE,
   },
   button: {
     padding: 15,
@@ -790,8 +748,8 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
-    color: BLACK,
+    color: WHITE,
   },
-}); 
+});
 
 export default RideTrackingScreen;

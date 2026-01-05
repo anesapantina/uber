@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, PanResponder } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface WelcomeScreenProps {
@@ -61,7 +62,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
       {/* Logo Circle at Top */}
       <View style={styles.logoContainer}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoText}>U</Text>
+          <Ionicons name="person" size={28} color={BLACK} />
         </View>
       </View>
 
@@ -101,7 +102,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           style={styles.appleButton}
           onPress={() => navigation.navigate('Login')}
         >
-          <Text style={styles.appleIcon}></Text>
+          <Text style={styles.appleIcon}></Text>
           <Text style={styles.appleButtonText}>Continue with Apple</Text>
         </TouchableOpacity>
 
@@ -191,11 +192,11 @@ const AnimatedLine: React.FC<{ line: any; pan: any }> = ({ line, pan }) => {
           top: moveAnim.y,
           opacity: opacityAnim,
           transform: [
-            { 
+            {
               rotateZ: bendInterpolate.interpolate({
                 inputRange: [-20, 20],
                 outputRange: ['-10deg', '10deg'],
-              }) 
+              })
             },
           ],
         },
@@ -222,11 +223,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: BLACK,
-  },
+
   linesContainer: {
     marginTop: 60,
     width: 300,

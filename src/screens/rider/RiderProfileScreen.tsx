@@ -20,16 +20,16 @@ interface RiderProfileScreenProps {
 // --- COLOR DEFINITIONS ---
 const BLACK = '#000000';
 const WHITE = '#FFFFFF';
-const GRAY_100 = '#F5F5F5';
-const GRAY_200 = '#E5E5E5';
-const GRAY_700 = '#3F3F3F';
-const LABEL_GRAY = '#666';
+const GRAY_100 = '#1A1A1A';
+const GRAY_200 = '#2A2A2A';
+const GRAY_700 = '#CCCCCC';
+const LABEL_GRAY = '#999';
 
 export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigation }) => {
   const user = useAuthStore((state: any) => state.user);
   const setUser = useAuthStore((state: any) => state.setUser);
   const logout = useAuthStore((state: any) => state.logout);
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.first_name || '');
   const [lastName, setLastName] = useState(user?.last_name || '');
@@ -48,7 +48,7 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
       };
 
       const { data, error } = await riderService.updateRiderProfile(user.id, updates);
-      
+
       if (error) {
         Alert.alert('Error', 'Failed to update profile');
         return;
@@ -57,7 +57,7 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
       // Update the user in the auth store
       const updatedUser = { ...user, ...updates };
       setUser(updatedUser, 'rider');
-      
+
       Alert.alert('Success', 'Profile updated successfully');
       setIsEditing(false);
     } catch (error) {
@@ -65,51 +65,25 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
     }
   };
 
-  const handleSwitchToDriver = () => {
-    Alert.alert(
-      'Switch to Driver Mode',
-      'Do you want to switch to driver mode?',
-      [
-        { text: 'Cancel' },
-        {
-          text: 'Yes',
-          onPress: () => {
-            const driverUser = {
-              ...user,
-              license_number: user.license_number || '',
-              vehicle_model: user.vehicle_model || '',
-              vehicle_year: user.vehicle_year || 0,
-              vehicle_color: user.vehicle_color || '',
-              vehicle_plate: user.vehicle_plate || '',
-              is_available: false,
-              current_latitude: 0,
-              current_longitude: 0,
-            };
-            setUser(driverUser, 'driver');
-          },
-        },
-      ]
-    );
-  };
-
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to log out?', [
-      { text: 'Cancel' },
-      {
-        text: 'Yes',
-        onPress: () => {
-          logout();
-        },
-      },
-    ]);
+    logout();
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView style={styles.container}>
         <View style={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
+          {/* Header Bar */}
+          <View style={styles.headerBar}>
+            <View style={{ width: 24 }} />
+            <Text style={styles.headerBarTitle}>Profile</Text>
+            <TouchableOpacity onPress={handleLogout}>
+              <Ionicons name="log-out-outline" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Profile Content */}
+          <View style={styles.profileHeader}>
             <View style={styles.profilePicPlaceholder}>
               <Text style={styles.profileInitials}>
                 {firstName?.[0]?.toUpperCase() || 'R'}{lastName?.[0]?.toUpperCase() || 'U'}
@@ -239,6 +213,26 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
             </View>
           </View>
 
+          {/* Payment Methods Card */}
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => {
+              const parentNav = navigation.getParent();
+              if (parentNav) {
+                parentNav.navigate('PaymentMethod', { isCancellation: false });
+              }
+            }}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.labelRow}>
+                <Ionicons name="card" size={20} color={BLACK} style={styles.labelIcon} />
+                <Text style={styles.cardTitle}>Payment Methods</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={LABEL_GRAY} />
+            </View>
+            <Text style={styles.value}>Manage your payment methods</Text>
+          </TouchableOpacity>
+
           {/* Action Buttons */}
           {isEditing && (
             <View style={styles.buttonRow}>
@@ -264,18 +258,7 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
             </View>
           )}
 
-          {/* Switch to Driver Button */}
-          <TouchableOpacity style={styles.switchModeButton} onPress={handleSwitchToDriver}>
-            <View style={styles.buttonRow}>
-              <Ionicons name="car" size={20} color={WHITE} style={{ marginRight: 8 }} />
-              <Text style={styles.switchModeButtonText}>Switch to Driver Mode</Text>
-            </View>
-          </TouchableOpacity>
 
-          {/* Logout Button */}
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -285,25 +268,36 @@ export const RiderProfileScreen: React.FC<RiderProfileScreenProps> = ({ navigati
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: GRAY_100,
+    backgroundColor: BLACK,
   },
   container: {
     flex: 1,
-    backgroundColor: GRAY_100,
+    backgroundColor: BLACK,
   },
   content: {
     padding: 20,
   },
-  header: {
+  headerBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  headerBarTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: WHITE,
+  },
+  profileHeader: {
     alignItems: 'center',
     marginBottom: 30,
-    marginTop: 20,
   },
   profilePicPlaceholder: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: BLACK,
+    backgroundColor: GRAY_200,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 15,
@@ -321,7 +315,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: GRAY_700,
+    color: WHITE,
     marginBottom: 5,
   },
   headerSubtitle: {
@@ -329,13 +323,13 @@ const styles = StyleSheet.create({
     color: LABEL_GRAY,
   },
   card: {
-    backgroundColor: WHITE,
+    backgroundColor: GRAY_100,
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 4,
   },
@@ -348,12 +342,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: GRAY_700,
+    color: WHITE,
     marginBottom: 15,
   },
   editButton: {
     fontSize: 16,
-    color: BLACK,
+    color: WHITE,
     fontWeight: '600',
   },
   inputGroup: {
@@ -374,17 +368,17 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 16,
-    color: BLACK,
+    color: GRAY_700,
     paddingVertical: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: GRAY_200,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    color: BLACK,
-    backgroundColor: '#fff',
+    color: WHITE,
+    backgroundColor: BLACK,
   },
   statsRow: {
     flexDirection: 'row',
@@ -397,7 +391,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: GRAY_700,
+    color: WHITE,
     marginBottom: 5,
   },
   statLabel: {
@@ -416,63 +410,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButton: {
-    backgroundColor: GRAY_700,
-    shadowColor: GRAY_700,
+    backgroundColor: WHITE,
+    shadowColor: WHITE,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 6,
   },
   cancelButton: {
-    backgroundColor: '#fff',
+    backgroundColor: BLACK,
     borderWidth: 2,
-    borderColor: LABEL_GRAY,
+    borderColor: GRAY_200,
   },
   buttonText: {
-    color: '#fff',
+    color: BLACK,
     fontSize: 16,
     fontWeight: 'bold',
   },
   cancelButtonText: {
-    color: LABEL_GRAY,
+    color: WHITE,
     fontSize: 16,
     fontWeight: 'bold',
   },
-  switchModeButton: {
-    backgroundColor: GRAY_700,
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 15,
-    shadowColor: GRAY_700,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 6,
-  },
-  switchModeButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  logoutButton: {
-    backgroundColor: BLACK,
-    padding: 18,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 40,
-    shadowColor: BLACK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 6,
-  },
-  logoutButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
+
 });
 
 export default RiderProfileScreen;

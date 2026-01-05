@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { driverService, supabase } from '../../services/supabase';
 import { useAuthStore, useDriverStore } from '../../store/store';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 interface AvailableRidesScreenProps {
   navigation: any;
@@ -45,7 +46,7 @@ export const AvailableRidesScreen: React.FC<AvailableRidesScreenProps> = ({ navi
         await driverService.setDriverAvailability(user.id, true);
       }
     };
-    
+
     initializeDriver();
   }, []);
 
@@ -53,7 +54,8 @@ export const AvailableRidesScreen: React.FC<AvailableRidesScreenProps> = ({ navi
     if (onDuty) {
       startLocationUpdates();
       fetchAvailableRides();
-      const interval = setInterval(fetchAvailableRides, 10000);
+      // Reduced interval from 10s to 3s for faster updates
+      const interval = setInterval(fetchAvailableRides, 3000);
       return () => clearInterval(interval);
     }
   }, [onDuty]);
@@ -82,9 +84,22 @@ export const AvailableRidesScreen: React.FC<AvailableRidesScreenProps> = ({ navi
   const fetchAvailableRides = async () => {
     try {
       setLoading(true);
-      const location = await Location.getCurrentPositionAsync({});
+      let location;
+      try {
+        location = await Location.getCurrentPositionAsync({});
+      } catch (e) {
+        console.log('Location unavailable, trying last known...');
+        location = await Location.getLastKnownPositionAsync({});
+      }
+
+      if (!location) {
+        // Fallback for emulator/testing if no location
+        console.log('Using fallback location');
+        location = { coords: { latitude: 37.78825, longitude: -122.4324 } };
+      }
+
       console.log('📍 Driver location:', location.coords.latitude, location.coords.longitude);
-      
+
       const { data, error } = await driverService.getAvailableRides(
         location.coords.latitude,
         location.coords.longitude,
@@ -135,7 +150,7 @@ export const AvailableRidesScreen: React.FC<AvailableRidesScreenProps> = ({ navi
       console.log('👤 Getting Supabase user ID...');
       const { data: authData } = await supabase.auth.getUser();
       const driverId = authData?.user?.id || user.id;
-      
+
       console.log('👤 Ensuring driver exists in database with ID:', driverId);
       console.log('👤 Using email:', authData?.user?.email || user.email);
       const profileResult = await driverService.updateDriverProfile(driverId, {
@@ -244,229 +259,344 @@ export const AvailableRidesScreen: React.FC<AvailableRidesScreenProps> = ({ navi
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Available Rides</Text>
-        <View style={styles.dutyToggle}>
-          <Text style={styles.dutyText}>On Duty</Text>
-          <Switch
-            value={onDuty}
-            onValueChange={handleToggleDuty}
-            thumbColor={onDuty ? BLACK : WHITE}
-            trackColor={{ false: GRAY_300, true: GRAY_700 }}
-          />
+    <View style={styles.container}>
+      {/* Dynamic Header */}
+      <SafeAreaView edges={['top']} style={styles.headerContainer}>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.headerTitle}>{onDuty ? 'Looking for rides...' : 'You are offline'}</Text>
+            <Text style={styles.headerSubtitle}>{onDuty ? 'We\'ll notify you when a ride is near' : 'Go online to start earning'}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: onDuty ? '#0A84FF' : '#3A3A3C' }]}>
+            <Text style={styles.statusText}>{onDuty ? 'ONLINE' : 'OFFLINE'}</Text>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
 
-      {!onDuty ? (
-        <View style={styles.offDutyContainer}>
-          <Text style={styles.offDutyText}>
-            Toggle "On Duty" to start accepting rides
-          </Text>
-          <TouchableOpacity 
-            style={styles.debugButton}
-            onPress={() => {
-              const storage = (global as any).mockStorage;
-              console.log('🗄️ DEBUG - All rides in storage:', JSON.stringify(storage?.rides || [], null, 2));
-              Alert.alert('Debug', `Total rides in storage: ${storage?.rides?.length || 0}`);
-            }}
-          >
-            <Text style={styles.debugButtonText}>Debug: Check Storage</Text>
-          </TouchableOpacity>
-        </View>
-      ) : loading && rides.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={BLACK} />
-        </View>
-      ) : rides.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No available rides nearby</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={rides}
-          renderItem={renderRideItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-        />
-      )}
-    </SafeAreaView>
+      <View style={styles.contentContainer}>
+        {!onDuty ? (
+          <View style={styles.offlineContainer}>
+            <TouchableOpacity
+              style={styles.goButton}
+              onPress={() => handleToggleDuty(true)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.goButtonInner}>
+                <Text style={styles.goButtonText}>GO</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.debugButton}
+              onPress={() => {
+                const storage = (global as any).mockStorage;
+                Alert.alert('Debug', `Total rides: ${storage?.rides?.length || 0}`);
+              }}
+            >
+              <Text style={styles.debugText}>Debug Tools</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.onlineContainer}>
+            {loading && rides.length === 0 ? (
+              <View style={styles.centerContent}>
+                <View style={styles.radarContainer}>
+                  <View style={styles.radarRing} />
+                  <Ionicons name="search" size={32} color="#636366" />
+                </View>
+                <Text style={styles.loadingText}>Searching area...</Text>
+              </View>
+            ) : rides.length === 0 ? (
+              <View style={styles.centerContent}>
+                <Ionicons name="car-sport-outline" size={64} color="#3A3A3C" />
+                <Text style={styles.emptyText}>No rides locally</Text>
+                <Text style={styles.emptySubtext}>Move to a busier area</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={rides}
+                renderItem={renderRideItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+
+            {/* Floating Offline Button */}
+            <TouchableOpacity
+              style={styles.stopButton}
+              onPress={() => handleToggleDuty(false)}
+            >
+              <Ionicons name="power" size={24} color={BLACK} />
+              <Text style={styles.stopButtonText}>Go Offline</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: '#000000', // Deep Black Background
   },
-  header: {
-    backgroundColor: BLACK, // Black Header
-    padding: 20,
-    paddingTop: 50, // Added padding for safe area
+  headerContainer: {
+    backgroundColor: '#1C1C1E', // Dark Card Background
+    borderBottomWidth: 1,
+    borderBottomColor: '#2C2C2E',
+    zIndex: 10,
+  },
+  headerContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: BLACK,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 6,
-    marginBottom: 10,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+    color: WHITE,
+    letterSpacing: -0.5,
   },
-  dutyToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#AEAEB2', // Light Gray Text
+    marginTop: 2,
+    fontWeight: '500',
   },
-  dutyText: {
-    color: '#fff',
-    fontWeight: '600',
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
   },
-  offDutyContainer: {
+  statusText: {
+    color: WHITE,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  offlineContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingBottom: 100,
   },
-  offDutyText: {
+  goButton: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#32D74B', // Green like images
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#32D74B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  goButtonInner: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  goButtonText: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: WHITE,
+  },
+  debugButton: {
+    marginTop: 40,
+    padding: 10,
+  },
+  debugText: {
+    color: '#636366',
+    fontSize: 12,
+  },
+  onlineContainer: {
+    flex: 1,
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#1C1C1E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  radarRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    opacity: 0.5,
+  },
+  loadingText: {
+    color: '#AEAEB2',
     fontSize: 16,
-    color: GRAY_700,
-    textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    fontWeight: '500',
   },
   emptyText: {
-    fontSize: 16,
-    color: GRAY_700,
-    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#8E8E93',
+    marginTop: 20,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#636366',
+    marginTop: 5,
   },
   listContent: {
-    padding: 15,
+    padding: 16,
+    paddingBottom: 100,
   },
   rideCard: {
-    backgroundColor: WHITE,
-    borderRadius: 10,
-    padding: 18,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    backgroundColor: '#1C1C1E', // Dark Card
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: BLACK,
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: GRAY_200,
+    shadowRadius: 16,
+    elevation: 5,
+    marginTop: 2, // Tiny separation
   },
   rideHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   riderName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    color: BLACK,
+    color: WHITE,
+    letterSpacing: -0.5,
   },
   rating: {
     fontSize: 14,
-    color: GRAY_700,
+    fontWeight: '600',
+    color: BLACK,
+    backgroundColor: '#FFD60A', // Keep gold badge for contrast
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   rideDetails: {
-    marginBottom: 15,
+    marginBottom: 20,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: GRAY_700,
-    marginBottom: 3,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
   address: {
     fontSize: 16,
-    color: BLACK,
+    fontWeight: '500',
+    color: WHITE,
+    marginBottom: 16,
+    lineHeight: 22,
   },
   rideStats: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#f9f9f9', // Light gray background for stats
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#eee',
+    justifyContent: 'space-between',
+    backgroundColor: '#2C2C2E', // Slightly lighter than card
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
   },
   stat: {
     alignItems: 'center',
   },
   statLabel: {
     fontSize: 11,
-    color: GRAY_700,
-    marginBottom: 3,
+    color: '#AEAEB2',
+    marginBottom: 4,
+    fontWeight: '600',
   },
   statValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: BLACK,
+    fontWeight: '700',
+    color: WHITE,
   },
   buttonContainer: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 5,
+    gap: 12,
   },
   acceptButton: {
-    flex: 1,
-    backgroundColor: BLACK, // Black button
-    padding: 15,
-    borderRadius: 10,
+    flex: 2,
+    backgroundColor: WHITE, // White button for contrast in dark mode
+    borderRadius: 16,
+    paddingVertical: 18,
     alignItems: 'center',
     shadowColor: BLACK,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
   },
   acceptButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+    color: BLACK,
+    fontSize: 17,
+    fontWeight: '700',
   },
   denyButton: {
     flex: 1,
-    backgroundColor: WHITE,
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: BLACK,
   },
   denyButtonText: {
-    color: BLACK,
-    fontWeight: 'bold',
+    color: '#FF453A', // iOS Dark Red
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  stopButton: {
+    position: 'absolute',
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 25,
+    shadowColor: BLACK,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  stopButtonText: {
     fontSize: 16,
-  },
-  debugButton: {
-    backgroundColor: '#2196F3',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  debugButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: '700',
+    color: '#000000',
   },
 });
 

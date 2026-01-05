@@ -10,9 +10,12 @@ import { RideRatingScreen } from '../screens/rider/RideRatingScreen';
 import { RiderActivityScreen } from '../screens/rider/RiderActivityScreen';
 import { RiderProfileScreen } from '../screens/rider/RiderProfileScreen';
 import { DestinationSelectScreen } from '../screens/rider/DestinationSelectScreen';
+import { PaymentMethodScreen } from '../screens/rider/PaymentMethodScreen';
+import { ChatScreen } from '../screens/chat/ChatScreen';
 import { AvailableRidesScreen } from '../screens/driver/AvailableRidesScreen';
 import { ActiveRideScreen } from '../screens/driver/ActiveRideScreen';
 import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
+import { DriverActivityScreen } from '../screens/driver/DriverActivityScreen';
 import { useAuthStore } from '../store/store';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
@@ -94,32 +97,36 @@ const RiderStack = () => (
       headerTitleStyle: {
         fontWeight: 'bold',
       },
+      headerShown: false,
     }}
   >
     <Stack.Screen
       name="RiderTabs"
       component={RiderTabs}
-      options={{ headerShown: false }}
     />
     <Stack.Screen
       name="DestinationSelect"
       component={DestinationSelectScreen}
-      options={{ headerShown: false }}
     />
     <Stack.Screen
       name="RideRequest"
       component={RideRequestScreen}
-      options={{ title: 'Request a Ride' }}
     />
     <Stack.Screen
       name="RideTracking"
       component={RideTrackingScreen}
-      options={{ title: 'Track Your Ride' }}
     />
     <Stack.Screen
       name="RideRating"
       component={RideRatingScreen}
-      options={{ title: 'Rate Your Ride' }}
+    />
+    <Stack.Screen
+      name="PaymentMethod"
+      component={PaymentMethodScreen}
+    />
+    <Stack.Screen
+      name="Chat"
+      component={ChatScreen}
     />
   </Stack.Navigator>
 );
@@ -147,6 +154,15 @@ const DriverTabs = () => (
       options={{
         tabBarIcon: ({ color }) => (
           <Ionicons name="home" size={28} color={color} />
+        ),
+      }}
+    />
+    <Tab.Screen
+      name="DriverHistory"
+      component={DriverActivityScreen}
+      options={{
+        tabBarIcon: ({ color }) => (
+          <Ionicons name="list" size={28} color={color} />
         ),
       }}
     />
@@ -184,6 +200,10 @@ const DriverStack = () => (
       name="ActiveRide"
       component={ActiveRideScreen}
       options={{ title: 'Active Ride' }}
+    />
+    <Stack.Screen
+      name="Chat"
+      component={ChatScreen}
     />
   </Stack.Navigator>
 );

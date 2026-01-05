@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,20 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  ScrollView,
+  Animated,
+  PanResponder,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { riderService, calculateDistance } from '../../services/supabase';
 import { useAuthStore, useRiderStore } from '../../store/store';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { ScheduleRideModal } from '../../components/ScheduleRideModal';
+import { CustomAlert } from '../../components/CustomAlert';
+import { LocationAutocompleteInput } from '../../components/LocationAutocompleteInput';
+import { GOOGLE_MAPS_DARK_STYLE } from '../../utils/config';
+
+const BLUE_ACCENT = '#007AFF';
 
 // Conditional map import
 let MapView: any, Marker: any, Polyline: any;
@@ -32,6 +41,7 @@ if (Platform.OS === 'web') {
 
 interface RideRequestScreenProps {
   navigation: any;
+  route: any;
 }
 
 const KOSOVO_CITIES = [
@@ -63,10 +73,10 @@ const KOSOVO_CITIES = [
 
 const BLACK = '#000000';
 const WHITE = '#FFFFFF';
-const GRAY_100 = '#F5F5F5';
-const GRAY_200 = '#E5E5E5';
-const GRAY_300 = '#D4D4D4';
-const GRAY_700 = '#3F3F3F';
+const GRAY_100 = '#1A1A1A';
+const GRAY_200 = '#2A2A2A';
+const GRAY_300 = '#3A3A3A';
+const GRAY_700 = '#CCCCCC';
 
 const VEHICLE_TYPES = [
   {
@@ -92,24 +102,120 @@ const VEHICLE_TYPES = [
   },
 ];
 
-export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation }) => {
-  const [pickup, setPickup] = useState('');
-  const [dropoff, setDropoff] = useState('');
+// Slide to Confirm Component
+const SlideToConfirm: React.FC<{ onConfirm: () => void; loading: boolean; vehicleName: string }> = ({ onConfirm, loading, vehicleName }) => {
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [confirmed, setConfirmed] = useState(false);
+  const maxSlide = 250; // Adjust based on container width
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => !loading && !confirmed,
+      onMoveShouldSetPanResponder: () => !loading && !confirmed,
+      onPanResponderGrant: () => {
+        slideAnim.setOffset(0);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx >= 0 && gestureState.dx <= maxSlide) {
+          slideAnim.setValue(gestureState.dx);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // Improved threshold - 60% instead of 70% for easier confirmation
+        if (gestureState.dx > maxSlide * 0.6 || gestureState.vx > 0.5) {
+          // User slid far enough or with enough velocity - confirm
+          Animated.timing(slideAnim, {
+            toValue: maxSlide,
+            duration: 200,
+            useNativeDriver: false,
+          }).start(() => {
+            setConfirmed(true);
+            // Call the confirm handler which will navigate
+            onConfirm();
+          });
+        } else {
+          // Snap back with faster animation
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 150,
+            useNativeDriver: false,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  return (
+    <View style={styles.slideContainer}>
+      <View style={styles.slideTrack}>
+        <Text style={styles.slideText}>
+          {loading ? 'Processing...' : confirmed ? '✓ Confirmed!' : `Slide to confirm ${vehicleName}`}
+        </Text>
+      </View>
+      {!loading && !confirmed && (
+        <Animated.View
+          {...panResponder.panHandlers}
+          style={[
+            styles.slideThumb,
+            {
+              transform: [{ translateX: slideAnim }],
+            },
+          ]}
+        >
+          <Ionicons name="chevron-forward" size={24} color={BLACK} />
+        </Animated.View>
+      )}
+      {loading && (
+        <View style={styles.slideThumb}>
+          <ActivityIndicator color={BLACK} size="small" />
+        </View>
+      )}
+    </View>
+  );
+};
+
+export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
+
+  // Get params from DestinationSelectScreen if available
+  const params = route?.params || {};
+  const [pickup, setPickup] = useState(params.pickup || '');
+  const [pickupLat, setPickupLat] = useState(params.pickupLat || null);
+  const [pickupLng, setPickupLng] = useState(params.pickupLng || null);
+  const [dropoff, setDropoff] = useState(params.dropoff || '');
+  const [dropoffLat, setDropoffLat] = useState(params.dropoffLat || null);
+  const [dropoffLng, setDropoffLng] = useState(params.dropoffLng || null);
+  const [scheduledTime, setScheduledTime] = useState<string | null>(params.scheduledTime || null);
+
   const [selectedVehicle, setSelectedVehicle] = useState('economy');
   const [loading, setLoading] = useState(false);
+  const slideAnimation = useRef(new Animated.Value(0)).current;
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showScheduleSuccessAlert, setShowScheduleSuccessAlert] = useState(false);
   const [activeField, setActiveField] = useState<'pickup' | 'dropoff' | null>(null);
   const [citySearch, setCitySearch] = useState('');
   const [estimatedFares, setEstimatedFares] = useState<any>({});
-  const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number, address: string} | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number, address: string } | null>(null);
   const [mapRegion, setMapRegion] = useState({
-    latitude: 42.6629,
-    longitude: 21.1581,
+    latitude: pickupLat || 42.6629,
+    longitude: pickupLng || 21.1581,
     latitudeDelta: 0.5,
     longitudeDelta: 0.5,
   });
-  
+
+  // Saved Places State
+  const [homeLocation, setHomeLocation] = useState<string | null>(null);
+  const [workLocation, setWorkLocation] = useState<string | null>(null);
+  const [savedPlaces, setSavedPlaces] = useState<any[]>([]);
+  const [isEditingPlace, setIsEditingPlace] = useState<string | null>(null);
+  const [showPlaceModal, setShowPlaceModal] = useState(false);
+  const [tempPlaceAddress, setTempPlaceAddress] = useState('');
+  const [tempPlaceLat, setTempPlaceLat] = useState<number | null>(null);
+  const [tempPlaceLng, setTempPlaceLng] = useState<number | null>(null);
+
   const user = useAuthStore((state: any) => state.user);
+  const setUser = useAuthStore((state: any) => state.setUser);
   const setCurrentRide = useRiderStore((state: any) => state.setCurrentRide);
 
   // Verify user exists on mount
@@ -134,11 +240,83 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
   }, []);
 
   // Recalculate fares when pickup or dropoff changes
+  // Recalculate fares when pickup or dropoff changes
   useEffect(() => {
     if (pickup && dropoff) {
       calculateFares(pickup, dropoff);
     }
   }, [pickup, dropoff]);
+
+  // Load User Profile for Library
+  useEffect(() => {
+    if (user?.id) {
+      loadUserProfile();
+    }
+  }, [user?.id]);
+
+  const loadUserProfile = async () => {
+    if (user?.id) {
+      const { data, error } = await riderService.getRiderProfile(user.id);
+      if (data && !error) {
+        setHomeLocation(data.home_address);
+        setWorkLocation(data.work_address);
+        setSavedPlaces(data.saved_places || []);
+        setUser(data, 'rider');
+      }
+    }
+  };
+
+  const handlePlaceSelect = (address: string, lat: number, lng: number) => {
+    setTempPlaceAddress(address);
+    setTempPlaceLat(lat);
+    setTempPlaceLng(lng);
+  };
+
+  const handleSavePlace = async () => {
+    if (!user?.id || !tempPlaceAddress) return;
+    setLoading(true);
+    try {
+      if (isEditingPlace === 'home') {
+        await riderService.updateRiderProfile(user.id, { home_address: tempPlaceAddress });
+        setHomeLocation(tempPlaceAddress);
+      } else if (isEditingPlace === 'work') {
+        await riderService.updateRiderProfile(user.id, { work_address: tempPlaceAddress });
+        setWorkLocation(tempPlaceAddress);
+      } else if (isEditingPlace === 'custom') {
+        const newPlaces = [...savedPlaces, { address: tempPlaceAddress, lat: tempPlaceLat, lng: tempPlaceLng, name: 'Saved Place' }];
+        await riderService.updateRiderProfile(user.id, { saved_places: newPlaces });
+        setSavedPlaces(newPlaces);
+      }
+      setShowPlaceModal(false);
+      setIsEditingPlace(null);
+      setTempPlaceAddress('');
+    } catch (error) { Alert.alert('Error', 'Failed to save'); }
+    finally { setLoading(false); }
+  };
+
+  const onPlacePress = (type: 'home' | 'work' | 'custom', address: string | null) => {
+    if (address) {
+      setDropoff(address);
+      // Ideally geocode here if we don't have coords
+    } else {
+      setIsEditingPlace(type);
+      setShowPlaceModal(true);
+    }
+  };
+
+  const renderLibraryItem = (icon: string, label: string, value: string | null, type: 'home' | 'work' | 'custom', color: string = BLUE_ACCENT) => (
+    <TouchableOpacity
+      style={styles.libraryItem}
+      onPress={() => onPlacePress(type, value)}
+      onLongPress={() => { setIsEditingPlace(type); setTempPlaceAddress(value || ''); setShowPlaceModal(true); }}
+    >
+      <View style={[styles.libraryIconCircle, { backgroundColor: value ? color : '#EEEEEE' }]}>
+        <Ionicons name={icon} size={24} color={value ? '#FFF' : '#666'} />
+      </View>
+      <Text style={styles.libraryLabel}>{label}</Text>
+      {!value && <Text style={styles.libraryAdd}>Add</Text>}
+    </TouchableOpacity>
+  );
 
   const getCurrentLocation = async () => {
     try {
@@ -152,7 +330,6 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
               const address = await reverseGeocode(latitude, longitude);
               console.log('Address:', address);
               setCurrentLocation({ lat: latitude, lng: longitude, address });
-              setPickup(address);
               setMapRegion({
                 latitude,
                 longitude,
@@ -162,31 +339,22 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
             },
             (error) => {
               console.error('Location error:', error.message);
-              Alert.alert(
-                'Location Access',
-                'Please enable location services to use your current location.',
-                [{ text: 'OK' }]
-              );
-              // Set default location if permission denied
-              setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: 'Prishtinë, Kosovo' });
-              setPickup('Prishtinë, Kosovo');
+              // Don't set default location - let user select manually
+              setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: '' });
             },
             { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
           );
         } else {
           console.warn('Geolocation not available');
-          setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: 'Prishtinë, Kosovo' });
-          setPickup('Prishtinë, Kosovo');
+          setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: '' });
         }
       } else {
         // For native platforms, you would use react-native-geolocation-service or expo-location
-        setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: 'Prishtinë, Kosovo' });
-        setPickup('Prishtinë, Kosovo');
+        setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: '' });
       }
     } catch (error) {
       console.error('Error getting location:', error);
-      setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: 'Prishtinë, Kosovo' });
-      setPickup('Prishtinë, Kosovo');
+      setCurrentLocation({ lat: 42.6629, lng: 21.1581, address: '' });
     }
   };
 
@@ -197,7 +365,7 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
       );
       const data = await response.json();
-      
+
       if (data.address) {
         const { road, neighbourhood, suburb, city, town, village, country } = data.address;
         return road || neighbourhood || suburb || city || town || village || country || 'Current Location';
@@ -218,21 +386,21 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
     // Try exact match first
     let pickupCoords = KOSOVO_CITIES.find(c => c.name === pickupCity);
     let dropoffCoords = KOSOVO_CITIES.find(c => c.name === dropoffCity);
-    
+
     // If no exact match, try partial match (city name contained in address)
     if (!pickupCoords) {
-      pickupCoords = KOSOVO_CITIES.find(c => 
-        pickupCity.toLowerCase().includes(c.name.toLowerCase()) || 
+      pickupCoords = KOSOVO_CITIES.find(c =>
+        pickupCity.toLowerCase().includes(c.name.toLowerCase()) ||
         c.name.toLowerCase().includes(pickupCity.toLowerCase())
       );
     }
     if (!dropoffCoords) {
-      dropoffCoords = KOSOVO_CITIES.find(c => 
-        dropoffCity.toLowerCase().includes(c.name.toLowerCase()) || 
+      dropoffCoords = KOSOVO_CITIES.find(c =>
+        dropoffCity.toLowerCase().includes(c.name.toLowerCase()) ||
         c.name.toLowerCase().includes(dropoffCity.toLowerCase())
       );
     }
-    
+
     // If still no match, use default coordinates (Prishtinë to Prizren)
     if (!pickupCoords) {
       console.log('Using default pickup coords for:', pickupCity);
@@ -252,7 +420,7 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
     VEHICLE_TYPES.forEach(vehicle => {
       fares[vehicle.id] = baseEstimate * vehicle.priceMultiplier;
     });
-    
+
     console.log('Calculated fares:', fares);
     setEstimatedFares(fares);
   };
@@ -278,6 +446,31 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
     setCitySearch('');
   };
 
+  const handleScheduleConfirm = (time: Date) => {
+    setScheduledTime(time.toISOString());
+    setShowScheduleModal(false);
+    setShowScheduleSuccessAlert(true);
+  };
+
+  const formatScheduledTime = (isoString: string) => {
+    const time = new Date(isoString);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let dateStr = '';
+    if (time.toDateString() === today.toDateString()) {
+      dateStr = 'Today';
+    } else if (time.toDateString() === tomorrow.toDateString()) {
+      dateStr = 'Tomorrow';
+    } else {
+      dateStr = time.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    const timeStr = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${dateStr} at ${timeStr}`;
+  };
+
   const handleRequestRide = async () => {
     if (!pickup || !dropoff) {
       console.warn('Please select both pickup and dropoff locations');
@@ -291,39 +484,70 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
       console.error('User not authenticated');
       return;
     }
-    
+
     console.log('Requesting ride with user ID:', user.id);
 
     setLoading(true);
     try {
-      const pickupCity = KOSOVO_CITIES.find(c => c.name === pickup);
-      const dropoffCity = KOSOVO_CITIES.find(c => c.name === dropoff);
-      const pickupCoords = pickupCity ? { lat: pickupCity.lat, lng: pickupCity.lng } : { lat: 42.6629, lng: 21.1581 };
-      const dropoffCoords = dropoffCity ? { lat: dropoffCity.lat, lng: dropoffCity.lng } : { lat: 42.2139, lng: 20.7398 };
+      // Use exact coordinates if available, otherwise fall back to city lookup
+      let pickupCoords = { lat: pickupLat || 42.6629, lng: pickupLng || 21.1581 };
+      let dropoffCoords = { lat: dropoffLat || 42.2139, lng: dropoffLng || 20.7398 };
+
+      // If no exact coords, try to find city
+      if (!pickupLat || !pickupLng) {
+        const pickupCity = KOSOVO_CITIES.find(c => c.name === pickup);
+        if (pickupCity) {
+          pickupCoords = { lat: pickupCity.lat, lng: pickupCity.lng };
+        }
+      }
+      if (!dropoffLat || !dropoffLng) {
+        const dropoffCity = KOSOVO_CITIES.find(c => c.name === dropoff);
+        if (dropoffCity) {
+          dropoffCoords = { lat: dropoffCity.lat, lng: dropoffCity.lng };
+        }
+      }
 
       const distance = calculateDistance(pickupCoords.lat, pickupCoords.lng, dropoffCoords.lat, dropoffCoords.lng);
       const duration = Math.ceil(distance * 2.5);
-      const estimatedFare = estimatedFares[selectedVehicle] || 0;
+      const estimatedFare = estimatedFares[selectedVehicle] || 5.0; // Fallback to 5.0 if 0 or undefined
 
-      const { data: createdRide, error } = await riderService.requestRide(
-        user.id, pickupCoords.lat, pickupCoords.lng, pickup,
-        dropoffCoords.lat, dropoffCoords.lng, dropoff,
-        distance, duration, estimatedFare, selectedVehicle, 'wallet'
-      );
+      try {
+        const { data: createdRide, error } = await riderService.requestRide(
+          user.id, pickupCoords.lat, pickupCoords.lng, pickup,
+          dropoffCoords.lat, dropoffCoords.lng, dropoff,
+          distance, duration, estimatedFare, selectedVehicle, 'wallet'
+        );
 
-      if (error) {
-        console.error('Ride request error:', error);
-        const errorMsg = (error as any)?.message || 'Please try again.';
-        console.error('Failed to request ride:', errorMsg);
-        return;
-      }
+        if (error) {
+          console.error('Ride request error:', error);
+          Alert.alert('Request Failed', 'Could not request ride. Please try again.');
+          return;
+        }
 
-      if (createdRide) {
-        setCurrentRide(createdRide);
-        navigation.navigate('RideTracking', { rideId: createdRide.id });
+        if (createdRide) {
+          // Add scheduled_time if provided
+          const rideWithSchedule = {
+            ...createdRide,
+            scheduled_time: scheduledTime,
+          };
+
+          // CRITICAL: Save to persistent store immediately
+          console.log('Saving ride to persistent store:', rideWithSchedule.id);
+          setCurrentRide(rideWithSchedule);
+
+          if (scheduledTime) {
+            setShowScheduleSuccessAlert(true);
+          } else {
+            // Navigate to tracking
+            navigation.navigate('RideTracking', { rideId: createdRide.id });
+          }
+        }
+      } catch (err) {
+        Alert.alert('Network Error', 'Please check your internet connection.');
       }
     } catch (error) {
       console.error('Ride request exception:', error);
+      Alert.alert('Error', 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
@@ -338,169 +562,166 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
             style={styles.map}
             region={mapRegion}
             mapType="standard"
-            customMapStyle={[
-              {
-                elementType: 'geometry',
-                stylers: [{ color: '#212121' }],
-              },
-              {
-                elementType: 'labels.icon',
-                stylers: [{ visibility: 'off' }],
-              },
-              {
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#757575' }],
-              },
-              {
-                elementType: 'labels.text.stroke',
-                stylers: [{ color: '#212121' }],
-              },
-              {
-                featureType: 'administrative',
-                elementType: 'geometry',
-                stylers: [{ color: '#757575' }],
-              },
-              {
-                featureType: 'administrative.country',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#9e9e9e' }],
-              },
-              {
-                featureType: 'administrative.land_parcel',
-                stylers: [{ visibility: 'off' }],
-              },
-              {
-                featureType: 'administrative.locality',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#bdbdbd' }],
-              },
-              {
-                featureType: 'poi',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#757575' }],
-              },
-              {
-                featureType: 'poi.park',
-                elementType: 'geometry',
-                stylers: [{ color: '#181818' }],
-              },
-              {
-                featureType: 'poi.park',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#616161' }],
-              },
-              {
-                featureType: 'poi.park',
-                elementType: 'labels.text.stroke',
-                stylers: [{ color: '#1b1b1b' }],
-              },
-              {
-                featureType: 'road',
-                elementType: 'geometry.fill',
-                stylers: [{ color: '#2c2c2c' }],
-              },
-              {
-                featureType: 'road',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#8a8a8a' }],
-              },
-              {
-                featureType: 'road.arterial',
-                elementType: 'geometry',
-                stylers: [{ color: '#373737' }],
-              },
-              {
-                featureType: 'road.highway',
-                elementType: 'geometry',
-                stylers: [{ color: '#3c3c3c' }],
-              },
-              {
-                featureType: 'road.highway.controlled_access',
-                elementType: 'geometry',
-                stylers: [{ color: '#4e4e4e' }],
-              },
-              {
-                featureType: 'road.local',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#616161' }],
-              },
-              {
-                featureType: 'transit',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#757575' }],
-              },
-              {
-                featureType: 'water',
-                elementType: 'geometry',
-                stylers: [{ color: '#000000' }],
-              },
-              {
-                featureType: 'water',
-                elementType: 'labels.text.fill',
-                stylers: [{ color: '#3d3d3d' }],
-              },
-            ]}
+            customMapStyle={GOOGLE_MAPS_DARK_STYLE}
+            userInterfaceStyle="dark"
           >
             {currentLocation && (
               <Marker
                 coordinate={{ latitude: currentLocation.lat, longitude: currentLocation.lng }}
                 title="Your Location"
-              />
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                <View style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(0, 122, 255, 0.3)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <View style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    backgroundColor: '#007AFF', // System Blue
+                    borderWidth: 2,
+                    borderColor: 'white',
+                  }} />
+                </View>
+              </Marker>
             )}
+            {/* Pickup Marker */}
+            {pickup && (() => {
+              const pickupCity = KOSOVO_CITIES.find(c => c.name === pickup || pickup.includes(c.name));
+              if (pickupCity) {
+                return (
+                  <Marker
+                    coordinate={{ latitude: pickupCity.lat, longitude: pickupCity.lng }}
+                    title="Pickup"
+                    description={pickup}
+                  >
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="location-sharp" size={40} color="black" />
+                      <View style={{
+                        position: 'absolute',
+                        top: 8,
+                        width: 12,
+                        height: 12,
+                        borderRadius: 6,
+                        backgroundColor: 'white'
+                      }} />
+                    </View>
+                  </Marker>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Dropoff Marker */}
+            {dropoff && (() => {
+              const dropoffCity = KOSOVO_CITIES.find(c => c.name === dropoff || dropoff.includes(c.name));
+              if (dropoffCity) {
+                return (
+                  <Marker
+                    coordinate={{ latitude: dropoffCity.lat, longitude: dropoffCity.lng }}
+                    title="Dropoff"
+                    description={dropoff}
+                  >
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="location-sharp" size={40} color="black" />
+                      <View style={{
+                        position: 'absolute',
+                        top: 8,
+                        width: 12,
+                        height: 12,
+                        borderRadius: 6,
+                        backgroundColor: 'white'
+                      }} />
+                    </View>
+                  </Marker>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Route Line */}
+            {pickup && dropoff && (() => {
+              const pickupCity = KOSOVO_CITIES.find(c => c.name === pickup || pickup.includes(c.name));
+              const dropoffCity = KOSOVO_CITIES.find(c => c.name === dropoff || dropoff.includes(c.name));
+              if (pickupCity && dropoffCity) {
+                return (
+                  <Polyline
+                    coordinates={[
+                      { latitude: pickupCity.lat, longitude: pickupCity.lng },
+                      { latitude: dropoffCity.lat, longitude: dropoffCity.lng },
+                    ]}
+                    strokeColor="#FFFFFF"
+                    strokeWidth={4}
+                  />
+                );
+              }
+              return null;
+            })()}
           </MapView>
         </View>
 
-        {/* Header with Menu */}
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.navigate('RiderTabs');
-              }
-            }}
-          >
-            <Ionicons name="arrow-back" size={24} color={BLACK} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Uber</Text>
-          <TouchableOpacity style={styles.menuButton}>
-            <Ionicons name="menu" size={28} color={BLACK} />
-          </TouchableOpacity>
-        </View>
+        {/* Back Button - REMOVED */}
 
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Where to?"
-            placeholderTextColor={GRAY_700}
-            value={dropoff}
-            onFocus={() => {
-              setActiveField('dropoff');
-              setShowCityPicker(true);
-            }}
-          />
-          <Ionicons name="search" size={20} color={GRAY_700} style={styles.searchIcon} />
-        </View>
 
-        {/* Current Location */}
-        {!showCityPicker && currentLocation && (
-          <View style={styles.quickActionPanel}>
-            <TouchableOpacity style={styles.quickAction} onPress={() => { setActiveField('pickup'); setShowCityPicker(true); }}>
-              <Ionicons name="location" size={20} color={BLACK} style={styles.actionIcon} />
-              <Text style={styles.actionText}>My current location</Text>
-              <TouchableOpacity onPress={() => setCurrentLocation(null)}>
-                <Ionicons name="close" size={20} color={GRAY_700} />
-              </TouchableOpacity>
+
+        {/* Location Input Fields */}
+        {!(pickup && dropoff) && (
+          <View style={styles.locationInputContainer}>
+            <TouchableOpacity
+              style={styles.locationInputField}
+              onPress={() => {
+                navigation.navigate('DestinationSelect', {
+                  pickup,
+                  pickupLat,
+                  pickupLng,
+                  dropoff,
+                  dropoffLat,
+                  dropoffLng,
+                  initialField: 'pickup'
+                });
+              }}
+            >
+              <Ionicons name="ellipse" size={14} color="#4A90E2" style={{ marginRight: 15 }} />
+              <Text style={pickup ? styles.locationInputText : styles.locationInputPlaceholder} numberOfLines={1}>
+                {pickup || 'Your location'}
+              </Text>
             </TouchableOpacity>
-            
-            {pickup && (
-              <View style={styles.locationInfo}>
-                <Text style={styles.locationText}>{pickup}</Text>
-              </View>
-            )}
+
+            <View style={styles.locationDivider} />
+
+            <TouchableOpacity
+              style={styles.locationInputField}
+              onPress={() => {
+                navigation.navigate('DestinationSelect', {
+                  pickup,
+                  pickupLat,
+                  pickupLng,
+                  dropoff,
+                  dropoffLat,
+                  dropoffLng,
+                  scheduledTime
+                });
+              }}
+            >
+              <Ionicons name="location-sharp" size={18} color={WHITE} style={{ marginRight: 15 }} />
+              <Text style={dropoff ? styles.locationInputText : styles.locationInputPlaceholder} numberOfLines={1}>
+                {dropoff || 'Where to?'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Library Section (Added inside the floating card or below it) */}
+            <View style={styles.libraryContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.libraryScroll}>
+                {renderLibraryItem('home', 'Home', homeLocation, 'home', '#4A90E2')}
+                {renderLibraryItem('briefcase', 'Work', workLocation, 'work', '#F5A623')}
+                {renderLibraryItem('star', 'Saved', null, 'custom', '#666')}
+              </ScrollView>
+            </View>
           </View>
         )}
 
@@ -517,7 +738,7 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
                 </Text>
                 <View style={{ width: 30 }} />
               </View>
-              
+
               <TextInput
                 style={styles.modalSearchInput}
                 placeholder="Search cities..."
@@ -540,11 +761,43 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
           </View>
         </Modal>
 
-        {/* Ride Selection Bottom Sheet */}
+        {/* Place Edit Modal */}
+        <Modal visible={showPlaceModal} animationType="slide" presentationStyle="pageSheet">
+          <View style={styles.modalContainer}>
+            <View style={[styles.modalContent, { height: '60%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {isEditingPlace === 'home' ? 'Set Home' : isEditingPlace === 'work' ? 'Set Work' : 'Add Place'}
+                </Text>
+                <TouchableOpacity onPress={() => setShowPlaceModal(false)}>
+                  <Text style={styles.modalClose}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.modalBody}>
+                <LocationAutocompleteInput
+                  placeholder="Search address..."
+                  value={tempPlaceAddress}
+                  onLocationSelect={handlePlaceSelect}
+                  autoFocus
+                  predefinedPlaces={KOSOVO_CITIES}
+                />
+                <TouchableOpacity
+                  style={[styles.modalSaveButton, !tempPlaceAddress && styles.disabledButton]}
+                  onPress={handleSavePlace}
+                  disabled={!tempPlaceAddress || loading}
+                >
+                  {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalSaveText}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Slide Button Panel - Shows when both locations selected */}
         {pickup && dropoff && (
-          <View style={styles.rideSelectionPanel}>
+          <View style={[styles.rideSelectionPanel, { paddingBottom: Math.max(insets.bottom, 20) }]}>
             <Text style={styles.panelTitle}>Select a ride</Text>
-            
+
             {VEHICLE_TYPES.map((vehicle) => {
               const isSelected = selectedVehicle === vehicle.id;
               const fare = estimatedFares[vehicle.id];
@@ -564,52 +817,216 @@ export const RideRequestScreen: React.FC<RideRequestScreenProps> = ({ navigation
               );
             })}
 
-            <TouchableOpacity
-              style={[styles.requestButton, loading && styles.buttonDisabled]}
-              onPress={handleRequestRide}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color={WHITE} />
-              ) : (
-                <Text style={styles.requestButtonText}>
-                  Request {VEHICLE_TYPES.find(v => v.id === selectedVehicle)?.name}
+            {/* Schedule Info Display */}
+            {scheduledTime && (
+              <View style={styles.scheduleInfoContainer}>
+                <Ionicons name="time-outline" size={18} color={WHITE} />
+                <Text style={styles.scheduleInfoText}>
+                  Scheduled for {formatScheduledTime(scheduledTime)}
                 </Text>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity onPress={() => setScheduledTime(null)}>
+                  <Ionicons name="close-circle" size={20} color={GRAY_700} />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Slide to Confirm and Schedule Button Row */}
+            <View style={styles.confirmRow}>
+              <View style={styles.slideToConfirmContainer}>
+                <SlideToConfirm
+                  onConfirm={handleRequestRide}
+                  loading={loading}
+                  vehicleName={VEHICLE_TYPES.find(v => v.id === selectedVehicle)?.name || 'ride'}
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.calendarButton}
+                onPress={() => setShowScheduleModal(true)}
+              >
+                <Ionicons name="calendar-outline" size={24} color={BLACK} />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
-    </SafeAreaView>
+
+      {/* Schedule Modal */}
+      <ScheduleRideModal
+        visible={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onConfirm={handleScheduleConfirm}
+        navigation={navigation}
+      />
+
+      <CustomAlert
+        visible={showScheduleSuccessAlert}
+        title="Ride Scheduled"
+        message={`Your ride has been scheduled for ${scheduledTime ? formatScheduledTime(scheduledTime) : ''}.\n\nWe'll notify you when your driver is on the way.`}
+        icon="calendar"
+        buttons={[
+          {
+            text: 'OK',
+            style: 'default',
+            // Hard reset to ensure navigation works
+            onPress: () => {
+              // Reset current stack to DestinationSelect
+              navigation.reset({
+                index: 0,
+                routes: [{
+                  name: 'DestinationSelect',
+                  params: { reset: true }
+                }]
+              });
+            },
+          },
+        ]}
+      />
+    </SafeAreaView >
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: WHITE },
+  safeArea: { flex: 1, backgroundColor: BLACK },
   container: { flex: 1 },
-  mapWrapper: { 
+  mapWrapper: {
     flex: 1,
     backgroundColor: '#000000',
   },
-  map: { 
+  map: {
     flex: 1,
   },
-  header: {
+  floatingBackButton: {
     position: 'absolute',
-    top: 10,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    top: Platform.OS === 'ios' ? 60 : 50,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    zIndex: 10,
   },
-  backButton: { padding: 8 },
-  backButtonText: { fontSize: 24, fontWeight: 'bold', color: BLACK },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: BLACK },
-  menuButton: { padding: 8 },
-  menuButtonText: { fontSize: 24, color: BLACK },
+  floatingMenuButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 50,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  locationInputContainer: {
+    position: 'absolute',
+    bottom: 40,
+    left: 15,
+    right: 15,
+    backgroundColor: '#000',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 9,
+  },
+  locationInputField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  locationInputText: {
+    flex: 1,
+    fontSize: 16,
+    color: WHITE,
+    fontWeight: '500',
+  },
+  locationInputPlaceholder: {
+    flex: 1,
+    fontSize: 16,
+    color: GRAY_700,
+  },
+  locationDivider: {
+    height: 1,
+    backgroundColor: GRAY_200,
+    marginHorizontal: 10,
+  },
+  libraryContainer: {
+    marginTop: 10,
+    paddingBottom: 5,
+  },
+  libraryScroll: {
+    paddingHorizontal: 16,
+    gap: 15,
+  },
+  libraryItem: {
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  libraryIconCircle: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  libraryLabel: {
+    fontSize: 12,
+    color: WHITE,
+    fontWeight: '600',
+  },
+  libraryAdd: {
+    fontSize: 10,
+    color: '#007AFF',
+    marginTop: 2,
+  },
+  modalBody: {
+    padding: 20,
+    flex: 1,
+  },
+  modalSaveButton: {
+    backgroundColor: BLACK,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  modalSaveText: {
+    color: WHITE,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  modalClose: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  arrowButton: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    marginTop: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: GRAY_100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: BLACK,
+  },
   searchContainer: {
     position: 'absolute',
     top: 60,
@@ -659,7 +1076,7 @@ const styles = StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   modalContent: {
     flex: 1,
-    backgroundColor: WHITE,
+    backgroundColor: BLACK,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     marginTop: 100,
@@ -674,7 +1091,7 @@ const styles = StyleSheet.create({
     borderBottomColor: GRAY_200,
   },
 
-  modalTitle: { fontSize: 16, fontWeight: '600', color: BLACK },
+  modalTitle: { fontSize: 16, fontWeight: '600', color: WHITE },
   modalSearchInput: {
     marginHorizontal: 15,
     marginVertical: 15,
@@ -683,7 +1100,7 @@ const styles = StyleSheet.create({
     backgroundColor: GRAY_100,
     borderRadius: 8,
     fontSize: 15,
-    color: BLACK,
+    color: WHITE,
   },
   cityItem: {
     flexDirection: 'row',
@@ -694,23 +1111,25 @@ const styles = StyleSheet.create({
     borderBottomColor: GRAY_200,
   },
   cityIcon: { marginRight: 12 },
-  cityName: { fontSize: 15, color: BLACK },
+  cityName: { fontSize: 15, color: WHITE },
   rideSelectionPanel: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: WHITE,
+    backgroundColor: BLACK,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.5,
     shadowRadius: 5,
     elevation: 10,
+    maxHeight: '50%',
   },
-  panelTitle: { fontSize: 18, fontWeight: '700', color: BLACK, marginBottom: 15 },
+  panelTitle: { fontSize: 18, fontWeight: '700', color: WHITE, marginBottom: 15 },
   vehicleOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -722,20 +1141,93 @@ const styles = StyleSheet.create({
     borderColor: GRAY_200,
     borderRadius: 10,
   },
-  vehicleOptionSelected: { borderColor: BLACK, backgroundColor: GRAY_100 },
+  vehicleOptionSelected: { borderColor: WHITE, backgroundColor: GRAY_200 },
   vehicleInfo: { flex: 1 },
-  vehicleName: { fontSize: 16, fontWeight: '600', color: BLACK, marginBottom: 3 },
+  vehicleName: { fontSize: 16, fontWeight: '600', color: WHITE, marginBottom: 3 },
   vehicleDesc: { fontSize: 13, color: GRAY_700 },
-  vehiclePrice: { fontSize: 18, fontWeight: '700', color: BLACK },
+  vehiclePrice: { fontSize: 18, fontWeight: '700', color: WHITE },
   requestButton: {
-    backgroundColor: BLACK,
+    backgroundColor: WHITE,
     paddingVertical: 16,
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 15,
+    marginBottom: 5,
   },
   buttonDisabled: { opacity: 0.5 },
-  requestButtonText: { color: WHITE, fontSize: 16, fontWeight: '700' },
+  requestButtonText: { color: BLACK, fontSize: 16, fontWeight: '700' },
+  slideContainer: {
+    marginTop: 15,
+    marginBottom: 5,
+    height: 60,
+    backgroundColor: GRAY_100,
+    borderRadius: 30,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  slideTrack: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  slideText: {
+    color: GRAY_700,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  slideThumb: {
+    position: 'absolute',
+    left: 5,
+    top: 5,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: WHITE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  scheduleInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: GRAY_200,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  scheduleInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: WHITE,
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  slideToConfirmContainer: {
+    flex: 1,
+  },
+  calendarButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: WHITE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
 });
 
 export default RideRequestScreen;

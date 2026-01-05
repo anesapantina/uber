@@ -19,10 +19,12 @@ import { useAuthStore } from './src/store/store';
 // Rider Screens
 import RideHomeScreen from './src/screens/rider/RideHomeScreen';
 import { RideRequestScreen } from './src/screens/rider/RideRequestScreen';
+import { DestinationSelectScreen } from './src/screens/rider/DestinationSelectScreen';
 import RideTrackingScreen from './src/screens/rider/RideTrackingScreen';
 import RideRatingScreen from './src/screens/rider/RideRatingScreen';
 import RiderProfileScreen from './src/screens/rider/RiderProfileScreen';
 import RiderActivityScreen from './src/screens/rider/RiderActivityScreen';
+import { PaymentMethodScreen } from './src/screens/rider/PaymentMethodScreen';
 
 // Driver Screens
 import ActiveRideScreen from './src/screens/driver/ActiveRideScreen';
@@ -124,6 +126,7 @@ function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const userType = useAuthStore((state) => state.userType);
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     async function loadFonts() {
@@ -142,78 +145,87 @@ function App() {
       }
     }
     loadFonts();
+
+    // Hide splash after 3 seconds
+    const splashTimer = setTimeout(() => {
+      setShowSplash(false);
+    }, 3000);
+
+    return () => clearTimeout(splashTimer);
   }, []);
 
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#000000" />
-      </View>
-    );
+  if (!fontsLoaded || showSplash) {
+    return <SplashScreen navigation={null} />;
   }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator 
+      <Stack.Navigator
         screenOptions={{ headerShown: false }}
+        initialRouteName={!isAuthenticated ? "Welcome" : (userType === 'driver' ? "DriverTabs" : "RiderTabs")}
       >
         {!isAuthenticated ? (
           <>
             {/* Splash & Auth Screens */}
-            <Stack.Screen 
-              name="Splash" 
-              component={SplashScreen}
-            />
-            <Stack.Screen 
-              name="Welcome" 
+            <Stack.Screen
+              name="Welcome"
               component={WelcomeScreen}
             />
-            <Stack.Screen 
-              name="Login" 
+            <Stack.Screen
+              name="Login"
               component={LoginScreen}
             />
-            <Stack.Screen 
-              name="Register" 
+            <Stack.Screen
+              name="Register"
               component={RegisterScreen}
             />
           </>
         ) : userType === 'driver' ? (
           <>
             {/* Driver Screens */}
-            <Stack.Screen 
-              name="DriverTabs" 
+            <Stack.Screen
+              name="DriverTabs"
               component={DriverTabs}
             />
-            <Stack.Screen 
-              name="ActiveRide" 
+            <Stack.Screen
+              name="ActiveRide"
               component={ActiveRideScreen}
             />
-            <Stack.Screen 
-              name="Chat" 
+            <Stack.Screen
+              name="Chat"
               component={ChatScreen}
             />
           </>
         ) : (
           <>
             {/* Rider Screens */}
-            <Stack.Screen 
-              name="RiderTabs" 
+            <Stack.Screen
+              name="RiderTabs"
               component={RiderTabs}
             />
-            <Stack.Screen 
-              name="RideRequest" 
+            <Stack.Screen
+              name="RideRequest"
               component={RideRequestScreen}
             />
-            <Stack.Screen 
-              name="RideTracking" 
+            <Stack.Screen
+              name="DestinationSelect"
+              component={DestinationSelectScreen}
+              options={{ headerShown: false, presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="RideTracking"
               component={RideTrackingScreen}
             />
-            <Stack.Screen 
-              name="RideRating" 
+            <Stack.Screen
+              name="RideRating"
               component={RideRatingScreen}
             />
-            <Stack.Screen 
-              name="Chat" 
+            <Stack.Screen
+              name="PaymentMethod"
+              component={PaymentMethodScreen}
+            />
+            <Stack.Screen
+              name="Chat"
               component={ChatScreen}
             />
           </>

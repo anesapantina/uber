@@ -138,11 +138,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
       setUser(user, userType);
       Alert.alert('Success', `Welcome to Uber as a ${userType}!`);
-      // Use reset to navigate to the appropriate home screen
-      navigation.reset({
-        index: 0,
-        routes: [{ name: userType === 'driver' ? 'AvailableRides' : 'RideHome' }],
-      });
+      // Navigation is handled automatically by RootNavigator based on auth state
     } catch (error) {
       Alert.alert('Error', 'An error occurred during registration');
     } finally {

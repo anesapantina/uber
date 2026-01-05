@@ -9,12 +9,14 @@ interface RiderHomeScreenProps {
 }
 
 // --- COLOR DEFINITIONS ---
-const PRIMARY_PINK = '#e8ccd7'; 
-const DARK_ACCENT = '#b8869e'; 
-const LIGHT_BACKGROUND = '#fcfcfc';
-const CARD_BACKGROUND = '#ffffff';
-const TEXT_COLOR = '#333333';
-const LABEL_GRAY = '#666';
+const BLACK = '#000000';
+const WHITE = '#FFFFFF';
+const GRAY_100 = '#1A1A1A';
+const GRAY_200 = '#2A2A2A';
+const LIGHT_BACKGROUND = BLACK;
+const CARD_BACKGROUND = GRAY_100;
+const TEXT_COLOR = WHITE;
+const LABEL_GRAY = '#999';
 
 // Mock Data for "Uber Selection"
 const rideOptions = [
@@ -106,7 +108,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: LIGHT_BACKGROUND,
+    backgroundColor: BLACK,
     padding: 20,
   },
   header: {
@@ -119,11 +121,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: DARK_ACCENT,
+    color: WHITE,
   },
   logoutButton: {
     padding: 8,
-    backgroundColor: PRIMARY_PINK,
+    backgroundColor: WHITE,
     borderRadius: 8,
   },
   logoutText: {
@@ -153,7 +155,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 10,
-    color: PRIMARY_PINK,
+    color: WHITE,
   },
   label: {
     fontSize: 14,
@@ -172,22 +174,22 @@ const styles = StyleSheet.create({
   },
   optionCard: {
     width: 140,
-    backgroundColor: '#fff',
+    backgroundColor: GRAY_100,
     borderRadius: 12,
     padding: 15,
     marginRight: 12,
     borderWidth: 2,
-    borderColor: '#eee',
+    borderColor: GRAY_200,
     alignItems: 'center',
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
     elevation: 3,
   },
   optionSelected: {
-    borderColor: DARK_ACCENT,
-    backgroundColor: PRIMARY_PINK + '30', // Light tint of the pink
+    borderColor: WHITE,
+    backgroundColor: GRAY_200,
   },
   optionIcon: {
     marginBottom: 8,
@@ -195,7 +197,7 @@ const styles = StyleSheet.create({
   optionName: {
     fontWeight: 'bold',
     fontSize: 15,
-    color: DARK_ACCENT,
+    color: WHITE,
     marginBottom: 5,
   },
   optionDescription: {
@@ -211,18 +213,18 @@ const styles = StyleSheet.create({
     color: TEXT_COLOR,
   },
   button: {
-    backgroundColor: DARK_ACCENT,
+    backgroundColor: WHITE,
     padding: 18,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: DARK_ACCENT,
+    shadowColor: WHITE,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 6,
   },
   buttonText: {
-    color: '#fff',
+    color: BLACK,
     fontSize: 18,
     fontWeight: 'bold',
   },

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "uber",
-    "slug": "uber",
+    "name": "RideKs",
+    "slug": "taksi",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/uber.png",
@@ -16,6 +16,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.rideks.taksi",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffb6c1"
@@ -37,7 +38,8 @@
             "./node_modules/react-native-vector-icons/Fonts/FontAwesome.ttf"
           ]
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

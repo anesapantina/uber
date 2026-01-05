@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface User {
   id: string;
@@ -45,6 +47,8 @@ export interface Ride {
   actual_fare?: number;
   status: 'pending' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
   created_at: string;
+  scheduled_time?: string; // ISO string for scheduled rides
+  driver?: any; // Driver details when ride is accepted
 }
 
 interface AuthStore {
@@ -60,6 +64,7 @@ interface RiderStore {
   rideHistory: Ride[];
   setCurrentRide: (ride: Ride | null) => void;
   setRideHistory: (rides: Ride[]) => void;
+  clearCurrentRide: () => void;
 }
 
 interface DriverStore {
@@ -73,38 +78,76 @@ interface DriverStore {
   setActiveRide: (ride: Ride | null) => void;
 }
 
-export const useAuthStore = create<AuthStore>((set) => ({
-  user: null,
-  userType: null,
-  isAuthenticated: false,
-  setUser: (user, type) =>
-    set({
-      user,
-      userType: type,
-      isAuthenticated: true,
-    }),
-  logout: () =>
-    set({
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set) => ({
       user: null,
       userType: null,
       isAuthenticated: false,
+      setUser: (user, type) =>
+        set({
+          user,
+          userType: type,
+          isAuthenticated: true,
+        }),
+      logout: () =>
+        set({
+          user: null,
+          userType: null,
+          isAuthenticated: false,
+        }),
     }),
-}));
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
 
-export const useRiderStore = create<RiderStore>((set) => ({
-  currentRide: null,
-  rideHistory: [],
-  setCurrentRide: (ride) => set({ currentRide: ride }),
-  setRideHistory: (rides) => set({ rideHistory: rides }),
-}));
+export const useRiderStore = create<RiderStore>()(
+  persist(
+    (set) => ({
+      currentRide: null,
+      rideHistory: [],
+      setCurrentRide: (ride) => {
+        console.log('Setting current ride:', ride?.id, ride?.status);
+        set({ currentRide: ride });
+      },
+      setRideHistory: (rides) => set({ rideHistory: rides }),
+      clearCurrentRide: () => set({ currentRide: null }),
+    }),
+    {
+      name: 'rider-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist currentRide if it's active (not completed or cancelled)
+      partialize: (state) => ({
+        currentRide:
+          state.currentRide &&
+            state.currentRide.status !== 'completed' &&
+            state.currentRide.status !== 'cancelled'
+            ? state.currentRide
+            : null,
+        rideHistory: state.rideHistory,
+      }),
+    }
+  )
+);
 
-export const useDriverStore = create<DriverStore>((set) => ({
-  isOnDuty: false,
-  currentLocation: null,
-  availableRides: [],
-  activeRide: null,
-  setOnDuty: (onDuty) => set({ isOnDuty: onDuty }),
-  setCurrentLocation: (location) => set({ currentLocation: location }),
-  setAvailableRides: (rides) => set({ availableRides: rides }),
-  setActiveRide: (ride) => set({ activeRide: ride }),
-}));
+export const useDriverStore = create<DriverStore>()(
+  persist(
+    (set) => ({
+      isOnDuty: false,
+      currentLocation: null,
+      availableRides: [],
+      activeRide: null,
+      setOnDuty: (onDuty) => set({ isOnDuty: onDuty }),
+      setCurrentLocation: (location) => set({ currentLocation: location }),
+      setAvailableRides: (rides) => set({ availableRides: rides }),
+      setActiveRide: (ride) => set({ activeRide: ride }),
+    }),
+    {
+      name: 'driver-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+    }
+  )
+);
